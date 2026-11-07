@@ -437,6 +437,7 @@ DEFAULT_APPEARANCE = {
     "sidebar_width": 300,
     "deposit_card_size": 100,
     "category_card_size": 100,
+    "order_card_size": 100,
     "price_font_size": 13,
     "price_font_color": "#4ade80",
     "general_font_weight": 0,
@@ -2213,6 +2214,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             --bottom-nav-height: 62px;
             --sidebar-width: 300px;
             --deposit-card-scale: 1;
+            --order-card-scale: 1;
             --category-card-scale: 1;
             --ticker-color: #38bdf8;
         }
@@ -2950,7 +2952,16 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .order-card-3 .order-card-left-exact { flex: 0 0 auto; align-items: flex-start; gap: 6px; }
         .order-card-3 .order-price-exact { font-size: 1.05rem; }
         .order-qty-exact { font-size: 0.8rem; color: var(--subtext-color); direction: ltr; font-weight: 700; }
-        .order-st-ic { width: 22px; height: 22px; flex: 0 0 auto; }
+        .order-st-ic { width: calc(22px * var(--order-card-scale, 1)); height: calc(22px * var(--order-card-scale, 1)); flex: 0 0 auto; }
+        .order-card-3 { padding: calc(12px * var(--order-card-scale, 1)) calc(14px * var(--order-card-scale, 1)); gap: calc(8px * var(--order-card-scale, 1)); border-radius: calc(14px * var(--order-card-scale, 1)); }
+        .order-card-3 .order-id-exact { font-size: calc(0.78rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-subcat-exact { font-size: calc(0.95rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-prod-exact { font-size: calc(0.72rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-price-exact { font-size: calc(1.05rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-qty-exact { font-size: calc(0.8rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-date-exact { font-size: calc(0.68rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-input-exact { font-size: calc(0.72rem * var(--order-card-scale, 1)); }
+        .order-card-3 .order-card-mid-exact .order-status-row-exact { font-size: calc(0.85rem * var(--order-card-scale, 1)); }
         .order-card-right-exact { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; }
         .order-id-exact { font-size: 0.85rem; font-weight: 800; color: var(--text-color); direction: ltr; }
         .order-subcat-exact { font-size: 0.82rem; font-weight: 700; color: var(--text-color); }
@@ -4462,6 +4473,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 if (a.sidebar_width) root.style.setProperty('--sidebar-width', a.sidebar_width + 'px');
                 if (a.deposit_card_size) root.style.setProperty('--deposit-card-scale', (a.deposit_card_size / 100).toFixed(2));
                 if (a.category_card_size) root.style.setProperty('--category-card-scale', (a.category_card_size / 100).toFixed(2));
+                if (a.order_card_size) root.style.setProperty('--order-card-scale', (a.order_card_size / 100).toFixed(2));
                 if (a.price_font_size) root.style.setProperty('--price-font-size', a.price_font_size + 'px');
                 if (a.price_font_color) root.style.setProperty('--price-font-color', a.price_font_color);
 
@@ -10368,6 +10380,14 @@ ADMIN_HTML_CONTENT = """
                         </label>
                         <input type="range" id="depositCardSizeRange" min="50" max="150" value="100" step="5" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
                     </div>
+
+                    <div>
+                        <label style="font-size:0.8rem; color:#a1a1aa; display:flex; justify-content:space-between;">
+                            <span>حجم كروت الطلبات</span>
+                            <span id="orderCardSizeValue" style="color:#4ade80; font-weight:700;">100%</span>
+                        </label>
+                        <input type="range" id="orderCardSizeRange" min="60" max="150" value="100" step="5" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
+                    </div>
                 </div>
 
                 <div style="background:#12121a; border:1px solid #2a2a3a; border-radius:16px; padding:18px;">
@@ -12266,6 +12286,7 @@ ADMIN_HTML_CONTENT = """
                 if (a.bottom_nav_height) document.getElementById('bottomNavSizeRange').value = a.bottom_nav_height;
                 if (a.deposit_card_size) document.getElementById('depositCardSizeRange').value = a.deposit_card_size;
                 if (a.category_card_size) document.getElementById('categoryCardSizeRange').value = a.category_card_size;
+                if (a.order_card_size) document.getElementById('orderCardSizeRange').value = a.order_card_size;
                 if (a.price_font_size) document.getElementById('priceFontSizeRange').value = a.price_font_size;
                 if (a.price_font_color) document.getElementById('priceFontColor').value = a.price_font_color;
                 var gw = a.general_font_weight || 0;
@@ -12349,6 +12370,7 @@ ADMIN_HTML_CONTENT = """
             const bh = document.getElementById('bottomNavSizeRange').value;
             const ccs = document.getElementById('categoryCardSizeRange').value;
             const dcs = document.getElementById('depositCardSizeRange').value;
+            const ocs = document.getElementById('orderCardSizeRange').value;
             const pfs = document.getElementById('priceFontSizeRange').value;
             const pfc = document.getElementById('priceFontColor').value;
 
@@ -12361,6 +12383,7 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('bottomNavSizeValue').innerText = bh + 'px';
             document.getElementById('categoryCardSizeValue').innerText = ccs + '%';
             document.getElementById('depositCardSizeValue').innerText = dcs + '%';
+            document.getElementById('orderCardSizeValue').innerText = ocs + '%';
             document.getElementById('priceFontSizeValue').innerText = pfs + 'px';
             const pfp = document.getElementById('priceFontPreview');
             pfp.style.fontSize = pfs + 'px';
@@ -12428,6 +12451,7 @@ ADMIN_HTML_CONTENT = """
                 bottom_nav_height: parseInt(document.getElementById('bottomNavSizeRange').value),
                 deposit_card_size: parseInt(document.getElementById('depositCardSizeRange').value),
                 category_card_size: parseInt(document.getElementById('categoryCardSizeRange').value),
+                order_card_size: parseInt(document.getElementById('orderCardSizeRange').value),
                 price_font_size: parseInt(document.getElementById('priceFontSizeRange').value),
                 price_font_color: document.getElementById('priceFontColor').value,
                 general_font_weight: document.getElementById('generalFontWeightAuto').checked ? 0 : parseInt(document.getElementById('generalFontWeightRange').value),
@@ -20118,6 +20142,7 @@ self.addEventListener('fetch', event => {
             APPEARANCE_DATA['bottom_nav_height'] = int(data.get('bottom_nav_height', 62))
             APPEARANCE_DATA['deposit_card_size'] = int(data.get('deposit_card_size', 100))
             APPEARANCE_DATA['category_card_size'] = int(data.get('category_card_size', 100))
+            APPEARANCE_DATA['order_card_size'] = max(50, min(160, int(data.get('order_card_size', 100))))
             APPEARANCE_DATA['price_font_size'] = int(data.get('price_font_size', 13))
             APPEARANCE_DATA['price_font_color'] = data.get('price_font_color', '#4ade80')
             def _fw(v, default, allow_zero=False):
