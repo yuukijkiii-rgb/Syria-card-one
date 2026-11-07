@@ -3743,7 +3743,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             <span class="guest-auth-title">تسجيل الدخول</span>
             <span class="guest-auth-desc">قم بتسجيل الدخول وتمتع بتجربة شراء سهلة</span>
             <button class="guest-btn-blue" onclick="openAuthModal()">تسجيل الدخول</button>
-            <button class="guest-btn-google" onclick="openAuthModal()">
+            <button class="guest-btn-google" onclick="handleGoogleSignIn()">
                 <span>تسجيل بواسطة غوغل</span>
                 <svg width="20" height="20" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -3909,7 +3909,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 <div class="auth-divider-text">او</div>
             </div>
 
-            <button class="google-auth-btn" onclick="handleModalLogin()">
+            <button class="google-auth-btn" onclick="handleGoogleSignIn()">
                 <svg width="22" height="22" viewBox="0 0 24 24">
                     <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"/>
                     <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/>
@@ -4947,6 +4947,93 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 }
             } catch (e) {
                 showTopNotification('فشل الاتصال بالخادم!');
+            }
+        }
+
+        // ====== تسجيل الدخول بواسطة جوجل ======
+        let _googleClientId = '';
+        let _googleTokenClient = null;
+        let _gsiLoading = null;
+        let _googlePrepared = false;
+
+        function loadGsi() {
+            if (window.google && google.accounts && google.accounts.oauth2) return Promise.resolve();
+            if (_gsiLoading) return _gsiLoading;
+            _gsiLoading = new Promise((resolve, reject) => {
+                const sc = document.createElement('script');
+                sc.src = 'https://accounts.google.com/gsi/client';
+                sc.async = true;
+                sc.onload = resolve;
+                sc.onerror = () => { _gsiLoading = null; reject(new Error('gsi')); };
+                document.head.appendChild(sc);
+            });
+            return _gsiLoading;
+        }
+
+        async function prepareGoogle() {
+            try {
+                const c = await fetch('/api/google_config').then(r => r.json());
+                _googleClientId = c.client_id || '';
+                _googlePrepared = true;
+                if (_googleClientId) await loadGsi();
+            } catch (e) {}
+        }
+
+        function handleGoogleSignIn() {
+            if (!_googleClientId) {
+                showTopNotification(_googlePrepared ? 'تسجيل الدخول عبر جوجل غير مفعّل حالياً' : 'جاري التحضير، اضغط مرة ثانية');
+                if (!_googlePrepared) prepareGoogle();
+                return;
+            }
+            if (!(window.google && google.accounts && google.accounts.oauth2)) {
+                showTopNotification('جاري تحميل خدمة جوجل، اضغط مرة ثانية');
+                loadGsi().catch(() => showTopNotification('تعذر الوصول لخدمة جوجل، تأكد من الإنترنت'));
+                return;
+            }
+            if (!_googleTokenClient) {
+                _googleTokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: _googleClientId,
+                    scope: 'openid email profile',
+                    callback: onGoogleToken,
+                    error_callback: (err) => {
+                        if (err && (err.type === 'popup_closed')) return;
+                        showTopNotification('تعذر فتح نافذة جوجل، تأكد انها غير محظورة');
+                    }
+                });
+            }
+            _googleTokenClient.requestAccessToken({ prompt: 'select_account' });
+        }
+
+        async function onGoogleToken(resp) {
+            if (!resp || resp.error || !resp.access_token) {
+                showTopNotification('تم إلغاء تسجيل الدخول بجوجل');
+                return;
+            }
+            try {
+                const res = await fetch('/api/google_login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ access_token: resp.access_token })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const email = data.email;
+                    localStorage.setItem('loggedInUserEmail', email);
+                    currentLoggedInEmail = email;
+                    applyLoggedInState(email, data.balance, data.user_id);
+                    updateSidebarVisibility(true);
+                    closeAuthModal();
+                    closeRegisterModal();
+                    startOrderPolling();
+                    loadNotifications();
+                    if (!data.profile_completed) {
+                        openCompleteProfileModal(email, true);
+                    }
+                } else {
+                    showTopNotification(data.message || 'فشل تسجيل الدخول بجوجل');
+                }
+            } catch (e) {
+                showTopNotification('حدث خطأ في الاتصال بالخادم');
             }
         }
 
@@ -7276,6 +7363,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         initTheme();
         applyAppearanceSettings();
+        prepareGoogle();
         loadTickerSettings();
         loadAnnouncement();
         loadSplashScreen();
@@ -8214,6 +8302,7 @@ ADMIN_HTML_CONTENT = """
             <div class="sub-menu" id="settingsMenu">
                 <button class="sub-menu-btn" onclick="openAboutUsSettingsModal()">تعيين من نحن</button>
                 <button class="sub-menu-btn" onclick="openSupportSettingsModal()">تعيين التواصل مع دعم</button>
+                <button class="sub-menu-btn" onclick="openGoogleSettingsModal()" style="color:#60a5fa; border-color:#60a5fa; font-weight:800;">ربط تسجيل جوجل</button>
                 <button class="sub-menu-btn" onclick="openAppearanceSettings()" style="color:#4ade80; border-color:#4ade80;">المظهر وضبط</button>
                 <button class="sub-menu-btn" onclick="openTickerSettingsModal()" style="color:#38bdf8; border-color:#38bdf8;">إعداد الشريط العلوي</button>
                 <button class="sub-menu-btn" onclick="openMaintenanceModal()" style="color:#f87171; border-color:#f87171; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> وضع الصيانة</button>
@@ -8726,6 +8815,21 @@ ADMIN_HTML_CONTENT = """
                 </div>
                 <button class="save-btn" onclick="saveBannerShine()">حفظ</button>
                 <button class="btn-secondary" onclick="closeModal('bannerShineModalOverlay')">إلغاء</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="googleSettingsModalOverlay">
+            <div class="modal-box">
+                <div class="modal-title" style="color:#60a5fa;">ربط تسجيل جوجل</div>
+                <div class="form-group">
+                    <label>Google Client ID:</label>
+                    <input type="text" id="googleClientIdInput" placeholder="xxxx.apps.googleusercontent.com" style="direction:ltr; text-align:left;">
+                </div>
+                <div id="googleClientIdNote" style="font-size:0.78rem; color:#a1a1aa; line-height:1.7; margin-bottom:12px;">
+                    من Google Cloud Console أنشئ OAuth Client ID من نوع Web application، وأضف رابط موقعك ضمن Authorized JavaScript origins، ثم الصق الـ Client ID هنا. اتركه فارغاً لإيقاف الميزة.
+                </div>
+                <button class="save-btn" onclick="saveGoogleSettings()">حفظ</button>
+                <button class="btn-secondary" onclick="closeModal('googleSettingsModalOverlay')">إلغاء</button>
             </div>
         </div>
 
@@ -10537,7 +10641,7 @@ ADMIN_HTML_CONTENT = """
             openCategoryModal: 'design', openBannerModal: 'design', openDeleteBannerModal: 'design',
             openCategoryBannerModal: 'design', openSplashModal: 'design', openSplashVideoModal: 'design',
             openLogoManageModal: 'design', openBannerShineModal: 'design', openAppearanceSettings: 'design', openTickerSettingsModal: 'design',
-            openAboutUsSettingsModal: 'settings', openSupportSettingsModal: 'settings',
+            openAboutUsSettingsModal: 'settings', openSupportSettingsModal: 'settings', openGoogleSettingsModal: 'settings',
             openMaintenanceModal: 'settings', openAnnouncementModal: 'settings',
             openAdminAccountsScreen: 'owner'
         };
@@ -11220,6 +11324,35 @@ ADMIN_HTML_CONTENT = """
                 if (r.status === 'success') {
                     alert('تم حفظ إعدادات لمعان البنر!');
                     closeModal('bannerShineModalOverlay');
+                } else { alert(r.message || 'صار خطأ'); }
+            } catch (e) { alert('فشل الاتصال بالخادم!'); }
+        }
+
+        // ===== ربط تسجيل جوجل =====
+        async function openGoogleSettingsModal() {
+            toggleSidebar();
+            try {
+                const c = await fetch('/api/google_config').then(r => r.json());
+                const inp = document.getElementById('googleClientIdInput');
+                inp.value = c.client_id || '';
+                inp.disabled = !!c.from_env;
+                document.getElementById('googleClientIdNote').style.color = c.from_env ? '#facc15' : '#a1a1aa';
+                if (c.from_env) document.getElementById('googleClientIdNote').textContent = 'الـ Client ID مضبوط من متغير البيئة GOOGLE_CLIENT_ID على السيرفر، وبيتقدّم على أي قيمة هنا.';
+            } catch (e) { console.error(e); }
+            openModal('googleSettingsModalOverlay');
+        }
+
+        async function saveGoogleSettings() {
+            try {
+                const res = await fetch('/api/update_google_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ client_id: document.getElementById('googleClientIdInput').value.trim() })
+                });
+                const r = await res.json();
+                if (r.status === 'success') {
+                    alert('تم حفظ إعدادات جوجل!');
+                    closeModal('googleSettingsModalOverlay');
                 } else { alert(r.message || 'صار خطأ'); }
             } catch (e) { alert('فشل الاتصال بالخادم!'); }
         }
@@ -17799,6 +17932,7 @@ ADMIN_PATH_PERMS = {
     "/api/update_about_us": "settings",
     "/api/update_support_settings": "settings",
     "/api/update_logo_settings": "design",
+    "/api/update_google_settings": "settings",
     "/api/update_banner_shine": "design",
     "/api/update_ticker_settings": "design",
     "/api/update_appearance_settings": "design",
@@ -17859,6 +17993,7 @@ ADMIN_ACTION_LABELS = {
     "/api/update_about_us": "تعديل من نحن",
     "/api/update_support_settings": "تعديل إعدادات الدعم",
     "/api/update_logo_settings": "تعديل اللوغو",
+    "/api/update_google_settings": "ضبط تسجيل جوجل",
     "/api/update_banner_shine": "تعديل لمعان البنر",
     "/api/update_ticker_settings": "تعديل الشريط العلوي",
     "/api/update_appearance_settings": "تعديل المظهر",
@@ -17971,6 +18106,89 @@ def admin_session_get(token):
                    "perms": [p for p in acc.get("perms", []) if p in ADMIN_PERM_KEYS]}
         ss["exp"] = now + ADMIN_SESSION_TTL
         return ctx
+
+
+# ==================== تسجيل الدخول بواسطة جوجل ====================
+GOOGLE_CLIENT_ID_ENV = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+
+
+def get_google_client_id():
+    return GOOGLE_CLIENT_ID_ENV or str(SETTINGS_DATA.get("google_client_id", "") or "").strip()
+
+
+def _google_get_json(url, bearer=None):
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + bearer} if bearer else {})
+    with urllib.request.urlopen(req, timeout=8) as res:
+        return json.loads(res.read().decode("utf-8"))
+
+
+def google_verify_access_token(access_token, client_id):
+    """يتحقق من توكن جوجل عند جوجل نفسها ويتأكد انه صادر لموقعنا (aud). يرجّع {email,name} أو None."""
+    try:
+        info = _google_get_json("https://oauth2.googleapis.com/tokeninfo?access_token=" + urllib.parse.quote(access_token, safe=""))
+        if (info.get("aud") or info.get("azp")) != client_id:
+            logging.warning("google_login: aud mismatch")
+            return None
+        email = str(info.get("email") or "")
+        verified = str(info.get("email_verified", "")).lower() == "true"
+        name = ""
+        if not email:
+            ui = _google_get_json("https://www.googleapis.com/oauth2/v3/userinfo", bearer=access_token)
+            email = str(ui.get("email") or "")
+            verified = bool(ui.get("email_verified"))
+            name = str(ui.get("name") or "")
+        if not email or not verified:
+            return None
+        return {"email": email.strip().lower(), "name": name}
+    except Exception as e:
+        logging.error("google_verify_access_token: %s" % e)
+        return None
+
+
+def google_login_process(d, user_ip):
+    cid = get_google_client_id()
+    if not cid:
+        return {"status": "error", "message": "تسجيل الدخول عبر جوجل غير مفعّل حالياً"}
+    token = str(d.get("access_token") or "")[:4096]
+    if not token:
+        return {"status": "error", "message": "تعذر قراءة بيانات جوجل"}
+    info = google_verify_access_token(token, cid)  # اتصال شبكة: خارج القفل
+    if not info:
+        return {"status": "error", "message": "تعذر التحقق من حساب جوجل"}
+    email = info["email"]
+    created = False
+    with POST_LOCK:
+        key = next((k for k in USERS_DATA if str(k).lower() == email), None)
+        if key is None:
+            key = email
+            created = True
+            USERS_DATA[key] = {
+                "id": 1000 + len(USERS_DATA) + 1,
+                "phone": "0000000000",
+                "password": secrets.token_urlsafe(16),
+                "auth_provider": "google",
+                "balance": 0,
+                "profile_completed": False,
+                "api_enabled": False,
+                "api_token": generate_api_token(),
+                "currency_name": "USD",
+                "currency_symbol": "$",
+                "currency_rate": 1,
+                "discount_percentage": 0,
+                "join_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            save_json_file(USERS_FILE, USERS_DATA)
+        u = USERS_DATA[key]
+        out = {"status": "success", "email": key, "balance": round(float(u.get("balance", 0)), 10),
+               "user_id": u.get("id", 1001), "profile_completed": bool(u.get("profile_completed", False)),
+               "new_user": created}
+    if created:
+        try:
+            send_telegram_new_user_notification(email=key, password="تسجيل بواسطة Google", phone="لم يتم إدخاله بعد",
+                                                user_ip=user_ip, currency_name="USD", currency_symbol="$", currency_rate=1)
+        except Exception as e:
+            logging.error("google_login notify: %s" % e)
+    return out
 
 
 _ADMIN_AUTO_FAILS = {}  # محاولات الدخول التلقائي الفاشلة (عدّاد منفصل حتى ما يقفل الدخول اليدوي)
@@ -19229,6 +19447,10 @@ self.addEventListener('fetch', event => {
                 "pending_deposits": pending_deposits
             }, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path == "/api/google_config":
+            _gid = get_google_client_id()
+            self._reply_json({"enabled": bool(_gid), "client_id": _gid, "from_env": bool(GOOGLE_CLIENT_ID_ENV)})
+
         elif self.path == "/api/get_site_settings":
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
@@ -19881,6 +20103,17 @@ self.addEventListener('fetch', event => {
             self.end_headers()
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
             return
+        if self.path == "/api/google_login":
+            # خارج POST_LOCK: التحقق من جوجل اتصال شبكة وما لازم يعلّق السيرفر
+            try:
+                n = int(self.headers.get('Content-Length') or 0)
+                body = json.loads(self.rfile.read(min(n, 20000)).decode('utf-8')) if n else {}
+                result = google_login_process(body if isinstance(body, dict) else {}, self._client_ip())
+            except Exception as e:
+                logging.error("google_login: %s" % e)
+                result = {"status": "error", "message": "حدث خطأ، حاول مرة أخرى"}
+            self._reply_json(result)
+            return
         if self.path == "/api/tg_notify_test":
             # خارج POST_LOCK حتى ما يعلّق السيرفر أثناء الاتصال بتلغرام
             try:
@@ -20106,6 +20339,15 @@ self.addEventListener('fetch', event => {
                 "user_id": user_id,
                 "profile_completed": prof_comp
             }).encode("utf-8"))
+
+        elif self.path == "/api/update_google_settings":
+            cid = str(data.get('client_id', '')).strip()[:200]
+            if cid and not cid.endswith(".apps.googleusercontent.com"):
+                self._reply_json({"status": "error", "message": "الـ Client ID غير صحيح، لازم ينتهي بـ apps.googleusercontent.com"})
+            else:
+                SETTINGS_DATA['google_client_id'] = cid
+                save_json_file(SETTINGS_FILE, SETTINGS_DATA)
+                self._reply_json({"status": "success"})
 
         elif self.path == "/api/update_about_us":
             about_text = data.get('about_us', '')
