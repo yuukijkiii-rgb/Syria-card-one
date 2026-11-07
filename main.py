@@ -468,7 +468,11 @@ DEFAULT_APPEARANCE = {
     "pwa_splash_image": "",
     # ===== اللوغو =====
     "logo_spin_enabled": False,
-    "logo_spin_speed": 5
+    "logo_spin_speed": 5,
+    # ===== لمعان البنر =====
+    "banner_shine_enabled": False,
+    "banner_shine_intensity": 6,
+    "banner_shine_speed": 5
 }
 
 DEFAULT_MAINTENANCE = {
@@ -2661,6 +2665,25 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .banner-slide.active { opacity: 1; }
         .banner-placeholder { font-size: 0.95rem; font-weight: 700; color: var(--text-color); }
 
+        /* ====== لمعان البنر (يتحكم فيه الأدمن) ====== */
+        .banner-container.shine { animation: bannerGlow var(--shine-dur, 4s) ease-in-out infinite; }
+        .banner-container.shine::after {
+            content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%;
+            background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,var(--shine-op, .5)) 50%, transparent 100%);
+            transform: translateX(-150%) skewX(-20deg);
+            animation: bannerShineSweep var(--shine-dur, 4s) ease-in-out infinite;
+            pointer-events: none; z-index: 6;
+        }
+        @keyframes bannerShineSweep {
+            0% { transform: translateX(-150%) skewX(-20deg); }
+            45% { transform: translateX(450%) skewX(-20deg); }
+            100% { transform: translateX(450%) skewX(-20deg); }
+        }
+        @keyframes bannerGlow {
+            0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); }
+            25% { box-shadow: 0 0 var(--shine-glow, 14px) rgba(255,255,255,var(--shine-glow-op, .25)); }
+        }
+
         .ticker-wrapper {
             width: 92%; margin: 0 auto; background-color: var(--card-bg);
             border: 1px solid var(--border-color); border-radius: 8px;
@@ -2917,6 +2940,17 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             box-shadow: 0 4px 12px rgba(0,0,0,0.25); cursor: pointer; transition: border-color 0.2s;
         }
         .order-card-exact:hover { border-color: var(--accent-color); }
+        /* كرت الطلب بثلاث أعمدة (السعر | الحالة والتاريخ | المعرّف والمنتج) */
+        .order-card-3 { gap: 8px; padding: 12px 14px; }
+        .order-card-3 .order-card-right-exact { flex: 0 1 38%; min-width: 0; }
+        .order-card-3 .order-id-exact { font-size: 0.78rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .order-card-3 .order-subcat-exact { font-size: 0.95rem; font-weight: 800; }
+        .order-card-mid-exact { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; min-width: 0; }
+        .order-card-mid-exact .order-status-row-exact { font-size: 0.85rem; gap: 6px; }
+        .order-card-3 .order-card-left-exact { flex: 0 0 auto; align-items: flex-start; gap: 6px; }
+        .order-card-3 .order-price-exact { font-size: 1.05rem; }
+        .order-qty-exact { font-size: 0.8rem; color: var(--subtext-color); direction: ltr; font-weight: 700; }
+        .order-st-ic { width: 22px; height: 22px; flex: 0 0 auto; }
         .order-card-right-exact { display: flex; flex-direction: column; align-items: flex-end; text-align: right; gap: 2px; }
         .order-id-exact { font-size: 0.85rem; font-weight: 800; color: var(--text-color); direction: ltr; }
         .order-subcat-exact { font-size: 0.82rem; font-weight: 700; color: var(--text-color); }
@@ -4371,6 +4405,21 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 const res = await fetch('/api/get_appearance_settings');
                 const a = await res.json();
                 const root = document.documentElement;
+                // لمعان البنر
+                const bnr = document.getElementById('bannerContainer');
+                if (bnr) {
+                    if (a.banner_shine_enabled) {
+                        const bsp = Math.max(1, Math.min(10, parseInt(a.banner_shine_speed) || 5));
+                        const bit = Math.max(1, Math.min(10, parseInt(a.banner_shine_intensity) || 6));
+                        bnr.style.setProperty('--shine-dur', (1.2 + (10 - bsp) * 0.8).toFixed(1) + 's');
+                        bnr.style.setProperty('--shine-op', (0.12 + bit * 0.07).toFixed(2));
+                        bnr.style.setProperty('--shine-glow', (4 + bit * 2) + 'px');
+                        bnr.style.setProperty('--shine-glow-op', (0.05 + bit * 0.04).toFixed(2));
+                        bnr.classList.add('shine');
+                    } else {
+                        bnr.classList.remove('shine');
+                    }
+                }
                 const hLogo = document.getElementById('headerLogoImg');
                 if (hLogo) {
                     if (a.logo_spin_enabled) {
@@ -6978,20 +7027,29 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     statusIcon = '⏳';
                 }
 
+                const stIc = (o.status === "مكتملة")
+                    ? '<svg class="order-st-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#22c55e"/><path d="M7 12.5l3.2 3.2L17 8.8" fill="none" stroke="#0b0b0f" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+                    : (o.status === "مرفوضة")
+                        ? '<svg class="order-st-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#f87171"/><path d="M8 8l8 8M16 8l-8 8" fill="none" stroke="#0b0b0f" stroke-width="2.6" stroke-linecap="round"/></svg>'
+                        : '<svg class="order-st-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="' + statusColor + '"/><path d="M12 6.5V12l3.5 2" fill="none" stroke="#0b0b0f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+                card.classList.add('order-card-3');
                 card.innerHTML = `
                     <div class="order-card-right-exact">
                         <span class="order-id-exact">ID_${o.order_uuid ? o.order_uuid.substring(0, 16) : o.id}#</span>
                         <span class="order-subcat-exact">${o.subcategory}</span>
                         <span class="order-prod-exact">${o.product}</span>
                     </div>
-                    <div class="order-card-left-exact">
-                        <span class="order-price-exact">${formatBalance(o.price)} $</span>
+                    <div class="order-card-mid-exact">
                         <div class="order-status-row-exact" style="color:${statusColor};">
                             <span>${statusText}</span>
-                            <span>${statusIcon}</span>
+                            ${stIc}
                         </div>
                         <span class="order-date-exact">${o.time || ''} ${o.date}</span>
                         <span class="order-input-exact">${o.input || '-'} #</span>
+                    </div>
+                    <div class="order-card-left-exact">
+                        <span class="order-price-exact">$ ${formatBalance(o.price)}</span>
+                        <span class="order-qty-exact">${o.quantity || o.qty || 1} /</span>
                     </div>
                 `;
                 container.appendChild(card);
@@ -8163,6 +8221,7 @@ ADMIN_HTML_CONTENT = """
                 <button class="sub-menu-btn" onclick="openSplashModal()">إضافة صورة ترحيبية</button>
                 <button class="sub-menu-btn" onclick="openSplashVideoModal()" style="color:#a855f7; border-color:#a855f7;"><svg class="ic"><use href="#i-film"/></svg> إضافة فيديو ترحيبي</button>
                 <button class="sub-menu-btn" onclick="openLogoManageModal()" style="color:#4ade80; border-color:#4ade80; font-weight:800;">إدارة اللوغو</button>
+                <button class="sub-menu-btn" onclick="openBannerShineModal()" style="color:#facc15; border-color:#facc15; font-weight:800;">لمعان البنر ✨</button>
             </div>
 
             <button class="admin-menu-btn" onclick="toggleSubMenu('productsMenu')">
@@ -8625,6 +8684,36 @@ ADMIN_HTML_CONTENT = """
                 </div>
                 <button class="save-btn" onclick="saveLogoSettings()">حفظ</button>
                 <button class="btn-secondary" onclick="closeModal('logoManageModalOverlay')">إلغاء</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="bannerShineModalOverlay">
+            <div class="modal-box">
+                <style>
+                    .shine-prev { position: relative; overflow: hidden; width: 100%; height: 84px; border-radius: 12px; border: 1px solid #2a2a3a; background: linear-gradient(135deg, #1e293b, #0f172a); display: flex; align-items: center; justify-content: center; color: #cbd5e1; font-weight: 700; font-size: 0.9rem; margin: 6px 0 16px; }
+                    .shine-prev.on { animation: shinePrevGlow var(--shine-dur, 4s) ease-in-out infinite; }
+                    .shine-prev.on::after { content: ''; position: absolute; top: 0; left: 0; width: 30%; height: 100%; background: linear-gradient(105deg, transparent 0%, rgba(255,255,255,var(--shine-op, .5)) 50%, transparent 100%); transform: translateX(-150%) skewX(-20deg); animation: shinePrevSweep var(--shine-dur, 4s) ease-in-out infinite; pointer-events: none; }
+                    @keyframes shinePrevSweep { 0% { transform: translateX(-150%) skewX(-20deg); } 45% { transform: translateX(450%) skewX(-20deg); } 100% { transform: translateX(450%) skewX(-20deg); } }
+                    @keyframes shinePrevGlow { 0%, 100% { box-shadow: 0 0 0 rgba(255,255,255,0); } 25% { box-shadow: 0 0 var(--shine-glow, 14px) rgba(255,255,255,var(--shine-glow-op, .25)); } }
+                </style>
+                <div class="modal-title" style="color:#facc15;">لمعان البنر ✨</div>
+                <div class="shine-prev" id="bannerShinePreview">معاينة البنر</div>
+                <div class="form-group">
+                    <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+                        <input type="checkbox" id="bannerShineToggle" onchange="previewBannerShine()" style="width:20px; height:20px; flex:0 0 auto;">
+                        <span>تفعيل لمعان البنر</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label>قوة اللمعان: <span id="bannerShineIntVal">6</span> / 10</label>
+                    <input type="range" id="bannerShineIntensity" min="1" max="10" step="1" value="6" oninput="previewBannerShine()" style="width:100%; padding:0;">
+                </div>
+                <div class="form-group">
+                    <label>سرعة اللمعان: <span id="bannerShineSpeedVal">5</span> / 10</label>
+                    <input type="range" id="bannerShineSpeed" min="1" max="10" step="1" value="5" oninput="previewBannerShine()" style="width:100%; padding:0;">
+                </div>
+                <button class="save-btn" onclick="saveBannerShine()">حفظ</button>
+                <button class="btn-secondary" onclick="closeModal('bannerShineModalOverlay')">إلغاء</button>
             </div>
         </div>
 
@@ -10427,7 +10516,7 @@ ADMIN_HTML_CONTENT = """
             openAddApiModal: 'api', openProfitMarginModal: 'api', openViewProvidersPage: 'api', openApiImportScreen: 'api',
             openCategoryModal: 'design', openBannerModal: 'design', openDeleteBannerModal: 'design',
             openCategoryBannerModal: 'design', openSplashModal: 'design', openSplashVideoModal: 'design',
-            openLogoManageModal: 'design', openAppearanceSettings: 'design', openTickerSettingsModal: 'design',
+            openLogoManageModal: 'design', openBannerShineModal: 'design', openAppearanceSettings: 'design', openTickerSettingsModal: 'design',
             openAboutUsSettingsModal: 'settings', openSupportSettingsModal: 'settings',
             openMaintenanceModal: 'settings', openAnnouncementModal: 'settings',
             openAdminAccountsScreen: 'owner'
@@ -10486,31 +10575,60 @@ ADMIN_HTML_CONTENT = """
             initAdminApp();
         }
 
-        async function handleAdminLogin() {
+        var _adminLoginBusy = false;
+        async function handleAdminLogin(auto) {
+            auto = (auto === true);
+            if (_adminLoginBusy) return;
             var email = document.getElementById('adminEmailInput').value.trim();
             var password = document.getElementById('adminPasswordInput').value.trim();
             var errorEl = document.getElementById('adminLoginError');
             var errTxt = document.getElementById('adminLoginErrText');
             var btn = document.getElementById('adminLoginBtn');
             function showErr(msg) {
+                if (auto) return; // الدخول التلقائي صامت: لا يظهر خطأ أثناء الكتابة
                 errTxt.textContent = msg;
                 errorEl.style.display = 'block';
                 setTimeout(function () { errorEl.style.display = 'none'; }, 3500);
             }
             if (!email || !password) { showErr('اكتب الإيميل وكلمة السر'); return; }
+            _adminLoginBusy = true;
             if (btn) btn.disabled = true;
             try {
                 var res = await fetch('/api/admin_login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, password: password })
+                    body: JSON.stringify({ email: email, password: password, auto: auto })
                 });
                 var d = await res.json();
                 if (d && d.status === 'success') { adminSessionStart(d); }
                 else { showErr((d && d.message) || 'البريد الإلكتروني أو كلمة السر غير صحيحة!'); }
             } catch (e) { showErr('تعذر الاتصال بالسيرفر'); }
+            _adminLoginBusy = false;
             if (btn) btn.disabled = false;
         }
+
+        // دخول تلقائي: أول ما تتوقف عن الكتابة والبيانات صحيحة يدخل بدون ضغط الزر
+        (function () {
+            var timer = null, lastKey = '';
+            function schedule() {
+                clearTimeout(timer);
+                timer = setTimeout(function () {
+                    var e = document.getElementById('adminEmailInput');
+                    var p = document.getElementById('adminPasswordInput');
+                    if (!e || !p) return;
+                    var em = e.value.trim(), pw = p.value.trim();
+                    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(em) || pw.length < 4) return;
+                    var key = em + '|' + pw;
+                    if (key === lastKey) return; // نفس البيانات جرّبناها قبل
+                    lastKey = key;
+                    handleAdminLogin(true);
+                }, 500);
+            }
+            ['adminEmailInput', 'adminPasswordInput'].forEach(function (id) {
+                var el = document.getElementById(id);
+                if (el) { el.addEventListener('input', schedule); el.addEventListener('change', schedule); }
+            });
+        })();
 
         window.adminExportXlsx = async function (filename, sheets) {
             try {
@@ -11031,6 +11149,57 @@ ADMIN_HTML_CONTENT = """
                 if (r.status === 'success') {
                     alert('تم حفظ إعدادات اللوغو بنجاح!');
                     closeModal('logoManageModalOverlay');
+                } else { alert(r.message || 'صار خطأ'); }
+            } catch (e) { alert('فشل الاتصال بالخادم!'); }
+        }
+
+        // ===== لمعان البنر =====
+        async function openBannerShineModal() {
+            toggleSidebar();
+            try {
+                const a = await fetch('/api/get_appearance_settings').then(r => r.json());
+                document.getElementById('bannerShineToggle').checked = !!a.banner_shine_enabled;
+                document.getElementById('bannerShineIntensity').value = a.banner_shine_intensity || 6;
+                document.getElementById('bannerShineSpeed').value = a.banner_shine_speed || 5;
+            } catch (e) { console.error(e); }
+            previewBannerShine();
+            openModal('bannerShineModalOverlay');
+        }
+
+        function previewBannerShine() {
+            const on = document.getElementById('bannerShineToggle').checked;
+            const it = parseInt(document.getElementById('bannerShineIntensity').value) || 6;
+            const sp = parseInt(document.getElementById('bannerShineSpeed').value) || 5;
+            document.getElementById('bannerShineIntVal').textContent = it;
+            document.getElementById('bannerShineSpeedVal').textContent = sp;
+            ['bannerShineIntensity', 'bannerShineSpeed'].forEach(function (id) {
+                const el = document.getElementById(id);
+                el.disabled = !on;
+                el.style.opacity = on ? '1' : '0.4';
+            });
+            const p = document.getElementById('bannerShinePreview');
+            p.style.setProperty('--shine-dur', (1.2 + (10 - sp) * 0.8).toFixed(1) + 's');
+            p.style.setProperty('--shine-op', (0.12 + it * 0.07).toFixed(2));
+            p.style.setProperty('--shine-glow', (4 + it * 2) + 'px');
+            p.style.setProperty('--shine-glow-op', (0.05 + it * 0.04).toFixed(2));
+            p.classList.toggle('on', on);
+        }
+
+        async function saveBannerShine() {
+            try {
+                const res = await fetch('/api/update_banner_shine', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        enabled: document.getElementById('bannerShineToggle').checked,
+                        intensity: parseInt(document.getElementById('bannerShineIntensity').value) || 6,
+                        speed: parseInt(document.getElementById('bannerShineSpeed').value) || 5
+                    })
+                });
+                const r = await res.json();
+                if (r.status === 'success') {
+                    alert('تم حفظ إعدادات لمعان البنر!');
+                    closeModal('bannerShineModalOverlay');
                 } else { alert(r.message || 'صار خطأ'); }
             } catch (e) { alert('فشل الاتصال بالخادم!'); }
         }
@@ -17606,6 +17775,7 @@ ADMIN_PATH_PERMS = {
     "/api/update_about_us": "settings",
     "/api/update_support_settings": "settings",
     "/api/update_logo_settings": "design",
+    "/api/update_banner_shine": "design",
     "/api/update_ticker_settings": "design",
     "/api/update_appearance_settings": "design",
     "/api/add_banner": "design",
@@ -17665,6 +17835,7 @@ ADMIN_ACTION_LABELS = {
     "/api/update_about_us": "تعديل من نحن",
     "/api/update_support_settings": "تعديل إعدادات الدعم",
     "/api/update_logo_settings": "تعديل اللوغو",
+    "/api/update_banner_shine": "تعديل لمعان البنر",
     "/api/update_ticker_settings": "تعديل الشريط العلوي",
     "/api/update_appearance_settings": "تعديل المظهر",
     "/api/add_banner": "إضافة بنر",
@@ -17778,10 +17949,16 @@ def admin_session_get(token):
         return ctx
 
 
-def admin_login_check(email, password, ip):
+_ADMIN_AUTO_FAILS = {}  # محاولات الدخول التلقائي الفاشلة (عدّاد منفصل حتى ما يقفل الدخول اليدوي)
+
+
+def admin_login_check(email, password, ip, auto=False):
     now = time.time()
     rec = _ADMIN_FAILS.get(ip)
     if rec and now - rec[1] < 600 and rec[0] >= 8:
+        return {"status": "error", "message": "محاولات كتيرة غلط، جرّب بعد شوي"}
+    arec = _ADMIN_AUTO_FAILS.get(ip)
+    if auto and arec and now - arec[1] < 600 and arec[0] >= 30:
         return {"status": "error", "message": "محاولات كتيرة غلط، جرّب بعد شوي"}
     email = str(email or "").strip().lower()
     password = str(password or "")
@@ -17799,12 +17976,18 @@ def admin_login_check(email, password, ip):
             else:
                 paused = True
     if role is None:
-        if rec and now - rec[1] < 600:
+        if auto:
+            if arec and now - arec[1] < 600:
+                arec[0] += 1
+            else:
+                _ADMIN_AUTO_FAILS[ip] = [1, now]
+        elif rec and now - rec[1] < 600:
             rec[0] += 1
         else:
             _ADMIN_FAILS[ip] = [1, now]
         return {"status": "error", "message": "هذا الحساب موقوف، تواصل مع المدير" if paused else "البريد الإلكتروني أو كلمة السر غير صحيحة!"}
     _ADMIN_FAILS.pop(ip, None)
+    _ADMIN_AUTO_FAILS.pop(ip, None)
     token = secrets.token_urlsafe(32)
     with _ADMIN_SESS_LOCK:
         for t in [t for t, v in ADMIN_SESSIONS.items() if v["exp"] < now]:
@@ -18607,7 +18790,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
         """True = تم الرد. False = مسموح، كمّل للمعالجة العادية."""
         d = data if isinstance(data, dict) else {}
         if path == "/api/admin_login":
-            self._reply_json(admin_login_check(d.get("email"), d.get("password"), self._client_ip()))
+            self._reply_json(admin_login_check(d.get("email"), d.get("password"), self._client_ip(), d.get("auto") is True))
             return True
         if path == "/api/admin_logout":
             tok = self.headers.get("X-Admin-Token", "")
@@ -19740,6 +19923,21 @@ self.addEventListener('fetch', event => {
             ANNOUNCEMENT_DATA['font'] = font
             ANNOUNCEMENT_DATA['color'] = color
             save_json_file(ANNOUNCEMENT_FILE, ANNOUNCEMENT_DATA)
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+
+        elif self.path == "/api/update_banner_shine":
+            def _shine_int(v, dflt):
+                try:
+                    return max(1, min(10, int(v)))
+                except (TypeError, ValueError):
+                    return dflt
+            APPEARANCE_DATA['banner_shine_enabled'] = bool(data.get('enabled', False))
+            APPEARANCE_DATA['banner_shine_intensity'] = _shine_int(data.get('intensity', 6), 6)
+            APPEARANCE_DATA['banner_shine_speed'] = _shine_int(data.get('speed', 5), 5)
+            save_json_file(APPEARANCE_FILE, APPEARANCE_DATA)
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
