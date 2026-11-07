@@ -93,7 +93,8 @@ def generate_api_token():
 
 
 def send_telegram_notification(product, subcategory, price, email, reason):
-    if not TELEGRAM_FAIL_BOT_TOKEN or TELEGRAM_FAIL_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    _tg_tok, _tg_chat = tg_notify_target("failures")
+    if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
         logging.warning("لم يتم ضبط توكن بوت التليجرام لإرسال الإشعار.")
         return
 
@@ -107,9 +108,9 @@ def send_telegram_notification(product, subcategory, price, email, reason):
         f"سبب الفشل: {reason}"
     )
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_FAIL_BOT_TOKEN}/sendMessage"
+    telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
     payload = json.dumps({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+        "chat_id": _tg_chat,
         "text": message
     }).encode("utf-8")
 
@@ -124,11 +125,12 @@ def send_telegram_notification(product, subcategory, price, email, reason):
 
 
 def send_telegram_purchase_notification(product, subcategory, price, user_input, system_response, email, user_password, user_ip, current_balance, previous_balance, order_source="الموقع"):
-    if not TELEGRAM_PURCHASE_BOT_TOKEN or TELEGRAM_PURCHASE_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    _tg_tok, _tg_chat = tg_notify_target("orders")
+    if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
         logging.warning("لم يتم ضبط توكن بوت إشعارات الشراء.")
         return
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage"
+    telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
     headers = {"Content-Type": "application/json"}
 
     message_premium = (
@@ -148,7 +150,7 @@ def send_telegram_purchase_notification(product, subcategory, price, user_input,
     )
 
     payload_premium = json.dumps({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+        "chat_id": _tg_chat,
         "text": message_premium,
         "parse_mode": "HTML"
     }).encode("utf-8")
@@ -184,7 +186,7 @@ def send_telegram_purchase_notification(product, subcategory, price, user_input,
         )
 
         payload_standard = json.dumps({
-            "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+            "chat_id": _tg_chat,
             "text": message_standard,
             "parse_mode": "HTML"
         }).encode("utf-8")
@@ -198,11 +200,12 @@ def send_telegram_purchase_notification(product, subcategory, price, user_input,
 
 
 def send_telegram_status_change_notification(order, new_status, user_password='غير معروف', user_ip='غير معروف'):
-    if not TELEGRAM_PURCHASE_BOT_TOKEN or TELEGRAM_PURCHASE_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    _tg_tok, _tg_chat = tg_notify_target("orders")
+    if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
         logging.warning("لم يتم ضبط توكن بوت إشعارات تغير الحالة.")
         return
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage"
+    telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
     headers = {"Content-Type": "application/json"}
 
     status_emoji = "✅" if new_status == "مكتملة" else "❌"
@@ -230,7 +233,7 @@ def send_telegram_status_change_notification(order, new_status, user_password='�
         message += f'💵 <b>تم إعادة المبلغ:</b> {order.get("price", 0)} $ إلى رصيد المستخدم\n'
 
     payload = json.dumps({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+        "chat_id": _tg_chat,
         "text": message,
         "parse_mode": "HTML"
     }).encode("utf-8")
@@ -244,11 +247,12 @@ def send_telegram_status_change_notification(order, new_status, user_password='�
 
 
 def send_telegram_deposit_notification(method_name, amount, tx_id, email, receipt_image='', user_balance=0):
-    if not TELEGRAM_PURCHASE_BOT_TOKEN or TELEGRAM_PURCHASE_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    _tg_tok, _tg_chat = tg_notify_target("deposits")
+    if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
         logging.warning("لم يتم ضبط توكن بوت إشعارات الإيداع.")
         return
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage"
+    telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
     headers = {"Content-Type": "application/json"}
 
     message_premium = (
@@ -264,7 +268,7 @@ def send_telegram_deposit_notification(method_name, amount, tx_id, email, receip
     )
 
     payload_premium = json.dumps({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+        "chat_id": _tg_chat,
         "text": message_premium,
         "parse_mode": "HTML"
     }).encode("utf-8")
@@ -296,7 +300,7 @@ def send_telegram_deposit_notification(method_name, amount, tx_id, email, receip
         )
 
         payload_standard = json.dumps({
-            "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+            "chat_id": _tg_chat,
             "text": message_standard,
             "parse_mode": "HTML"
         }).encode("utf-8")
@@ -310,14 +314,14 @@ def send_telegram_deposit_notification(method_name, amount, tx_id, email, receip
 
     if receipt_image:
         try:
-            photo_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendPhoto"
+            photo_url = f"https://api.telegram.org/bot{_tg_tok}/sendPhoto"
             if ',' in receipt_image:
                 img_base64 = receipt_image.split(',')[1]
             else:
                 img_base64 = receipt_image
 
             photo_payload = json.dumps({
-                "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+                "chat_id": _tg_chat,
                 "photo": f"data:image/jpeg;base64,{img_base64}",
                 "caption": "📸 إشعار التحويل"
             }).encode("utf-8")
@@ -330,11 +334,12 @@ def send_telegram_deposit_notification(method_name, amount, tx_id, email, receip
 
 
 def send_telegram_new_user_notification(email, password, phone, user_ip, currency_name, currency_symbol, currency_rate):
-    if not TELEGRAM_PURCHASE_BOT_TOKEN or TELEGRAM_PURCHASE_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+    _tg_tok, _tg_chat = tg_notify_target("registrations")
+    if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
         logging.warning("لم يتم ضبط توكن بوت إشعارات التسجيل.")
         return
 
-    telegram_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage"
+    telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
     headers = {"Content-Type": "application/json"}
 
     currency_text = "الدولار الأمريكي $ (افتراضي)"
@@ -354,7 +359,7 @@ def send_telegram_new_user_notification(email, password, phone, user_ip, currenc
     )
 
     payload_premium = json.dumps({
-        "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+        "chat_id": _tg_chat,
         "text": message_premium,
         "parse_mode": "HTML"
     }).encode("utf-8")
@@ -384,7 +389,7 @@ def send_telegram_new_user_notification(email, password, phone, user_ip, currenc
         )
 
         payload_standard = json.dumps({
-            "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+            "chat_id": _tg_chat,
             "text": message_standard,
             "parse_mode": "HTML"
         }).encode("utf-8")
@@ -514,6 +519,207 @@ SUBCATEGORIES_DATA = load_json_file(SUBCATEGORIES_FILE, [])
 ORDERS_DATA = load_json_file(ORDERS_FILE, [])
 DEPOSIT_METHODS_DATA = load_json_file(DEPOSIT_METHODS_FILE, [])
 DEPOSIT_REQUESTS_DATA = load_json_file(DEPOSIT_REQUESTS_FILE, [])
+
+
+# --------------------------------------------------
+# تعيين الإشعارات: بوت مستقل لكل نوع إشعار (الفارغ = الافتراضي)
+# --------------------------------------------------
+TG_NOTIFY_FILE = "telegram_notify_settings.json"
+TG_NOTIFY_DATA = load_json_file(TG_NOTIFY_FILE, {})
+if not isinstance(TG_NOTIFY_DATA, dict):
+    TG_NOTIFY_DATA = {}
+TG_NOTIFY_LOCK = threading.Lock()
+TG_NOTIFY_META = {
+    "orders": {"title": "إشعارات الطلبات", "icon": "cart",
+               "desc": "طلبات الشراء الجديدة وتغيير حالتها (مكتمل / مرفوض)"},
+    "deposits": {"title": "إشعارات الإيداع", "icon": "wallet",
+                 "desc": "طلبات الإيداع اليدوية بانتظار المراجعة"},
+    "auto_deposits": {"title": "إشعارات الإيداع التلقائي", "icon": "zap", "fallback": "deposits",
+                      "desc": "الإيداعات التلقائية الناجحة (إذا تركتها فاضية بتتبع بوت الإيداع)"},
+    "registrations": {"title": "إشعارات التسجيل", "icon": "user",
+                      "desc": "تسجيل مستخدم جديد وربط / فك ربط حسابات التلغرام"},
+    "prices": {"title": "إشعارات تحديث الأسعار", "icon": "trend",
+               "desc": "تغييرات أسعار المزودين (ارتفاع / انخفاض)"},
+    "failures": {"title": "إشعارات فشل طلبات API", "icon": "alert",
+                 "desc": "طلبات المزود اللي فشلت وانرسلت للتشييك"},
+}
+TG_TOKEN_RE = re.compile(r"^\d{5,15}:[A-Za-z0-9_-]{20,80}$")
+TG_CHAT_RE = re.compile(r"^(-?\d{1,20}|@[A-Za-z][A-Za-z0-9_]{3,63})$")
+
+
+def _tg_default_pair(kind):
+    if kind == "failures":
+        return str(TELEGRAM_FAIL_BOT_TOKEN or ""), str(TELEGRAM_ADMIN_CHAT_ID or "")
+    return str(TELEGRAM_PURCHASE_BOT_TOKEN or ""), str(TELEGRAM_ADMIN_CHAT_ID or "")
+
+
+def _tg_own(kind):
+    c = TG_NOTIFY_DATA.get(kind)
+    c = c if isinstance(c, dict) else {}
+    return {"token": str(c.get("token") or "").strip(),
+            "chat_id": str(c.get("chat_id") or "").strip(),
+            "enabled": c.get("enabled") is not False}
+
+
+def _tg_resolve(kind, _depth=0):
+    """(token, chat_id): الخاص بالقناة ثم الأب (fallback) ثم الافتراضي القديم."""
+    own = _tg_own(kind)
+    tok, chat = own["token"], own["chat_id"]
+    fb = (TG_NOTIFY_META.get(kind) or {}).get("fallback")
+    if (not tok or not chat) and fb and _depth < 3:
+        ftok, fchat = _tg_resolve(fb, _depth + 1)
+        tok = tok or ftok
+        chat = chat or fchat
+    if not tok or not chat:
+        dtok, dchat = _tg_default_pair(kind)
+        tok = tok or dtok
+        chat = chat or dchat
+    return tok, chat
+
+
+def tg_notify_target(kind):
+    """يرجّع (token, chat_id) لإرسال إشعار من هذا النوع. فاضي = معطّل أو غير مضبوط."""
+    try:
+        if not _tg_own(kind)["enabled"]:
+            return "", ""
+        return _tg_resolve(kind)
+    except Exception as e:
+        logging.error("tg_notify_target: %s" % e)
+        return _tg_default_pair(kind)
+
+
+def tg_notify_admin_view():
+    out = []
+    for k, meta in TG_NOTIFY_META.items():
+        own = _tg_own(k)
+        tok = own["token"]
+        out.append({
+            "kind": k, "title": meta["title"], "desc": meta["desc"], "icon": meta["icon"],
+            "enabled": own["enabled"], "has_token": bool(tok),
+            "token_hint": tok[-4:] if len(tok) >= 12 else "",
+            "chat_id": own["chat_id"], "uses_default": not (tok or own["chat_id"]),
+            "inherits": meta.get("fallback") or "",
+        })
+    return out
+
+
+def tg_notify_admin_action(path, data):
+    if not _auto_admin_ok(data):
+        return {"status": "error", "message": "غير مصرح"}
+    if path == "/api/tg_notify_get":
+        return {"status": "success", "channels": tg_notify_admin_view()}
+    chans = data.get("channels")
+    if not isinstance(chans, dict):
+        return {"status": "error", "message": "بيانات غير صالحة"}
+    staged = {}
+    for k, c in chans.items():
+        if k not in TG_NOTIFY_META or not isinstance(c, dict):
+            continue
+        title = TG_NOTIFY_META[k]["title"]
+        if c.get("reset"):
+            staged[k] = {"token": "", "chat_id": "", "enabled": True}
+            continue
+        cur = dict(_tg_own(k))
+        token = str(c.get("token") or "").strip()
+        if token:
+            if not TG_TOKEN_RE.match(token):
+                return {"status": "error", "message": "توكن البوت غير صالح في: " + title}
+            cur["token"] = token
+        chat = str(c.get("chat_id") or "").strip()
+        if chat and not TG_CHAT_RE.match(chat):
+            return {"status": "error", "message": "Chat ID غير صالح في: " + title + " (رقم أو @اسم_القناة)"}
+        cur["chat_id"] = chat
+        cur["enabled"] = bool(c.get("enabled", True))
+        staged[k] = cur
+    with TG_NOTIFY_LOCK:
+        TG_NOTIFY_DATA.update(staged)
+        save_json_file(TG_NOTIFY_FILE, TG_NOTIFY_DATA)
+    return {"status": "success", "channels": tg_notify_admin_view()}
+
+
+def _tg_api(token, method, payload=None, timeout=10):
+    import urllib.error as _ue
+    req = urllib.request.Request(
+        "https://api.telegram.org/bot%s/%s" % (token, method),
+        data=json.dumps(payload or {}).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            j = json.loads(res.read().decode("utf-8", "replace"))
+        return bool(j.get("ok")), j
+    except _ue.HTTPError as e:
+        try:
+            j = json.loads(e.read().decode("utf-8", "replace"))
+        except Exception:
+            j = {"description": "HTTP %s" % e.code}
+        return False, j
+    except Exception:
+        return False, {"description": "network"}
+
+
+def _tg_err_text(desc):
+    d = str(desc or "").strip().lower()
+    if "chat not found" in d:
+        return "ما لقى المحادثة: تأكد من Chat ID وإنك ضغطت Start على البوت"
+    if "unauthorized" in d or d == "not found":
+        return "توكن البوت غير صحيح"
+    if "blocked" in d:
+        return "المستخدم حاظر البوت"
+    if "not a member" in d or "kicked" in d or "forbidden" in d:
+        return "البوت مو عضو بالقناة/المجموعة أو ما عنده صلاحية الإرسال"
+    if "too many requests" in d:
+        return "طلبات كثيرة، جرّب بعد شوي"
+    if d == "network":
+        return "تعذر الاتصال بتلغرام من السيرفر"
+    return str(desc or "فشل الإرسال")
+
+
+def tg_notify_test(kind=None):
+    kinds = [kind] if kind in TG_NOTIFY_META else list(TG_NOTIFY_META)
+    out, groups = {}, {}
+    for k in kinds:
+        title = TG_NOTIFY_META[k]["title"]
+        if not _tg_own(k)["enabled"]:
+            out[k] = {"kind": k, "title": title, "state": "disabled", "ok": None, "bot": "", "message": "القناة معطّلة"}
+            continue
+        tok, chat = _tg_resolve(k)
+        if not tok or tok == "YOUR_TELEGRAM_BOT_TOKEN" or not chat:
+            out[k] = {"kind": k, "title": title, "state": "missing", "ok": False, "bot": "", "message": "التوكن أو Chat ID غير مضبوط"}
+            continue
+        groups.setdefault((tok, chat), []).append(k)
+
+    def work(tok, chat, ks):
+        ok, j = _tg_api(tok, "getMe")
+        bot, state, msg = "", "fail", ""
+        if not ok:
+            msg = _tg_err_text(j.get("description"))
+        else:
+            bot = "@" + str((j.get("result") or {}).get("username") or "")
+            names = "، ".join(TG_NOTIFY_META[x]["title"] for x in ks)
+            sep = "ـــــــــــــــــــــــــــــ"
+            text = ("🔔 <b>رسالة تجريبية</b>\n" + sep + "\n"
+                    "<b>القنوات المرتبطة:</b> " + html_lib.escape(names) + "\n"
+                    "<b>الوقت:</b> " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n" + sep + "\n"
+                    "✅ إذا وصلتك هالرسالة فالإشعارات شغالة")
+            ok2, j2 = _tg_api(tok, "sendMessage", {"chat_id": chat, "text": text, "parse_mode": "HTML"})
+            if ok2:
+                state, msg = "ok", "وصلت الرسالة التجريبية"
+            else:
+                msg = _tg_err_text(j2.get("description"))
+        for x in ks:
+            out[x] = {"kind": x, "title": TG_NOTIFY_META[x]["title"], "state": state,
+                      "ok": state == "ok", "bot": bot, "message": msg}
+
+    threads = [threading.Thread(target=work, args=(t, c, ks), daemon=True) for (t, c), ks in groups.items()]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(25)
+    for k in kinds:
+        if k not in out:
+            out[k] = {"kind": k, "title": TG_NOTIFY_META[k]["title"], "state": "fail", "ok": False, "bot": "", "message": "انتهت مهلة الاتصال"}
+    return {"status": "success", "results": [out[k] for k in kinds]}
+
 PROVIDERS_DATA = load_json_file(PROVIDERS_FILE, [])
 CATEGORY_BANNERS_DATA = load_json_file(CATEGORY_BANNERS_FILE, {})
 SETTINGS_DATA = load_json_file(SETTINGS_FILE, DEFAULT_SETTINGS)
@@ -1027,13 +1233,14 @@ class ApiPriceMonitor:
                 logging.error(f"خطأ في فحص أسعار المزود {provider_name}: {e}")
 
     def _send_price_change_notification(self, provider_name, price_changes):
-        if not TELEGRAM_PURCHASE_BOT_TOKEN or TELEGRAM_PURCHASE_BOT_TOKEN == "YOUR_TELEGRAM_BOT_TOKEN":
+        _tg_tok, _tg_chat = tg_notify_target("prices")
+        if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
             return
 
         if not price_changes:
             return
 
-        telegram_url = f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage"
+        telegram_url = f"https://api.telegram.org/bot{_tg_tok}/sendMessage"
         headers = {"Content-Type": "application/json"}
 
         changes_text = ""
@@ -1054,7 +1261,7 @@ class ApiPriceMonitor:
         )
 
         payload = json.dumps({
-            "chat_id": TELEGRAM_ADMIN_CHAT_ID,
+            "chat_id": _tg_chat,
             "text": message,
             "parse_mode": "HTML"
         }).encode("utf-8")
@@ -7369,6 +7576,67 @@ ADMIN_HTML_CONTENT = """
         .adh-stt { font-size: .8rem; font-weight: 800; color: var(--txt); }
         .adh-sts { font-size: .68rem; color: var(--muted); margin-top: 2px; }
 
+        #tgNotifyScreen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1800; overflow-y: auto; padding: 20px 20px 0; flex-direction: column; gap: 14px; background: radial-gradient(800px 400px at 90% -10%, rgba(56,189,248,0.10), transparent 60%), var(--bg-0); }
+        #tgNotifyScreen.active { display: flex; }
+        .tgn-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid var(--line-2); padding-bottom: 12px; }
+        .tgn-title { display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 800; color: #38bdf8; }
+        .tgn-title-ico { width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.35); }
+        .tgn-title-ico svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .tgn-hint { font-size: .76rem; line-height: 1.9; color: var(--muted); background: var(--bg-1); border: 1px dashed var(--line); border-radius: 14px; padding: 12px 14px; }
+        .tgn-hint b { color: var(--txt); display: block; font-size: .82rem; }
+        .tgn-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 12px; align-items: start; }
+        .tgn-card { display: flex; flex-direction: column; gap: 11px; padding: 16px; border-radius: 18px; background: linear-gradient(150deg, var(--bg-3), var(--bg-1)); border: 1px solid var(--line-2); transition: border-color .25s, opacity .25s; animation: adhIn .35s ease both; }
+        .tgn-card:hover { border-color: rgba(56,189,248,.55); }
+        .tgn-card.off { opacity: .6; }
+        .tgn-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .tgn-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .tgn-ic { flex: 0 0 40px; width: 40px; height: 40px; border-radius: 13px; display: flex; align-items: center; justify-content: center; background: rgba(232,194,106,.12); border: 1px solid rgba(232,194,106,.3); color: var(--gold); }
+        .tgn-ic svg { width: 19px; height: 19px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .tgn-name { font-size: .92rem; font-weight: 800; color: var(--txt); }
+        .tgn-desc { font-size: .68rem; color: var(--muted); line-height: 1.6; margin-top: 2px; }
+        .tgn-badge { align-self: flex-start; display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .64rem; font-weight: 800; border: 1px solid var(--line); color: var(--muted); }
+        .tgn-badge.on { color: #22c55e; background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.35); }
+        .tgn-badge.inh { color: #38bdf8; background: rgba(56,189,248,.12); border-color: rgba(56,189,248,.35); }
+        .tgn-field { display: flex; flex-direction: column; gap: 5px; }
+        .tgn-field label { font-size: .7rem; font-weight: 700; color: var(--muted); }
+        .tgn-inrow { display: flex; gap: 6px; }
+        .tgn-input { flex: 1; min-width: 0; background: var(--bg-0); border: 1px solid var(--line); color: var(--txt); border-radius: 11px; padding: 10px 12px; font-size: .8rem; direction: ltr; text-align: left; box-sizing: border-box; font-family: monospace; }
+        .tgn-input:focus { outline: none; border-color: #38bdf8; }
+        .tgn-sub { font-size: .66rem; color: var(--muted); min-height: 1em; }
+        .tgn-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tgn-mini { padding: 8px 13px; border-radius: 10px; border: 1px solid #38bdf8; background: rgba(56,189,248,.1); color: #38bdf8; font-size: .72rem; font-weight: 800; cursor: pointer; transition: transform .15s, background .2s; }
+        .tgn-mini:hover { background: rgba(56,189,248,.2); }
+        .tgn-mini:active { transform: scale(.95); }
+        .tgn-mini.ghost { border-color: var(--line); background: var(--bg-0); color: var(--muted); }
+        .tgn-mini.ghost:hover { color: var(--txt); border-color: var(--gold); }
+        .tgn-switch { position: relative; flex: 0 0 46px; width: 46px; height: 26px; display: inline-block; }
+        .tgn-switch input { position: absolute; inset: 0; opacity: 0; width: 100% !important; height: 100%; margin: 0; padding: 0 !important; cursor: pointer; z-index: 2; }
+        .tgn-switch span { position: absolute; inset: 0; border-radius: 999px; background: var(--bg-0); border: 1px solid var(--line); transition: background .25s, border-color .25s; }
+        .tgn-switch span::after { content: ''; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .25s, background .25s; }
+        .tgn-switch input:checked + span { background: #16a34a; border-color: #16a34a; }
+        .tgn-switch input:checked + span::after { transform: translateX(-20px); background: #fff; }
+        .tgn-bar { position: sticky; bottom: 0; margin: 0 -20px; padding: 12px 20px; display: flex; align-items: center; gap: 10px; background: linear-gradient(to top, var(--bg-0) 70%, transparent); }
+        .tgn-status { flex: 1; font-size: .74rem; font-weight: 700; color: #22c55e; }
+        .tgn-status.err { color: #f87171; }
+        .tgn-save { padding: 11px 22px; border-radius: 12px; border: none; background: linear-gradient(135deg, #b8902f, var(--gold)); color: #1a1405; font-weight: 900; font-size: .85rem; cursor: pointer; transition: transform .15s, opacity .2s; }
+        .tgn-save:active { transform: scale(.96); }
+        .tgn-save:disabled { opacity: .6; cursor: wait; }
+        .tgn-test-all { display: inline-flex; align-items: center; gap: 6px; padding: 11px 16px; border-radius: 12px; border: 1px solid #a78bfa; background: rgba(167,139,250,.12); color: #a78bfa; font-weight: 800; font-size: .8rem; cursor: pointer; }
+        .tgn-test-all svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .tgr-sum { text-align: center; font-size: .85rem; font-weight: 800; color: var(--txt); padding: 4px 0 12px; }
+        .tgr-row { display: flex; align-items: flex-start; gap: 11px; padding: 11px 0; border-bottom: 1px dashed var(--line-2); }
+        .tgr-row:last-child { border-bottom: none; }
+        .tgr-ic { flex: 0 0 28px; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .tgr-ic svg { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+        .tgr-ic.ok { background: rgba(34,197,94,.15); color: #22c55e; }
+        .tgr-ic.fail { background: rgba(239,68,68,.15); color: #ef4444; }
+        .tgr-ic.off { background: rgba(161,161,170,.15); color: #a1a1aa; }
+        .tgr-ic.missing { background: rgba(245,158,11,.15); color: #f59e0b; }
+        .tgr-t { font-size: .82rem; font-weight: 800; color: var(--txt); }
+        .tgr-m { font-size: .72rem; color: var(--muted); margin-top: 2px; line-height: 1.6; }
+        .tgr-b { font-size: .68rem; color: var(--gold); direction: ltr; text-align: right; font-family: monospace; }
+        .tgr-load { text-align: center; color: var(--muted); font-size: .82rem; padding: 26px 0; }
+
         .client-card { background-color: #121212; border: 1px solid #27272a; border-radius: 14px; padding: 14px 18px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: border-color 0.2s; }
         body.light-mode-admin .client-card { background-color: #ffffff; border-color: #e4e4e7; }
         .client-card:hover { border-color: #38bdf8; }
@@ -7879,6 +8147,8 @@ ADMIN_HTML_CONTENT = """
                 <button class="sub-menu-btn" onclick="openAppearanceSettings()" style="color:#4ade80; border-color:#4ade80;">المظهر وضبط</button>
                 <button class="sub-menu-btn" onclick="openTickerSettingsModal()" style="color:#38bdf8; border-color:#38bdf8;">إعداد الشريط العلوي</button>
                 <button class="sub-menu-btn" onclick="openMaintenanceModal()" style="color:#f87171; border-color:#f87171; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> وضع الصيانة</button>
+                <button class="sub-menu-btn" onclick="openTgNotifyScreen()" style="color:#38bdf8; border-color:#38bdf8; font-weight:800;"><svg class="ic"><use href="#i-send"/></svg> تعيين الاشعارات</button>
+                <button class="sub-menu-btn" onclick="tgNotifyTestFromMenu()" style="color:#a78bfa; border-color:#a78bfa; font-weight:800;"><svg class="ic"><use href="#i-activity"/></svg> ارسال رسالة تجريب للبوتات</button>
             </div>
 
             <button class="admin-menu-btn" onclick="toggleSubMenu('designMenu')">
@@ -8023,6 +8293,31 @@ ADMIN_HTML_CONTENT = """
             <div class="modal-box" style="max-height: 90vh; overflow-y: auto;">
                 <div id="adhDetailBody"></div>
                 <button class="btn-secondary" style="margin-top:12px; width:100%;" onclick="closeModal('adhDetailModal')">إغلاق</button>
+            </div>
+        </div>
+
+        <div id="tgNotifyScreen">
+            <div class="tgn-top">
+                <div class="tgn-title"><span class="tgn-title-ico"><svg viewBox="0 0 24 24"><use href="#i-send"/></svg></span><span>تعيين الاشعارات</span></div>
+                <button class="btn-secondary" onclick="closeTgNotifyScreen()">رجوع</button>
+            </div>
+            <div class="tgn-hint">
+                <b>كل نوع إشعار بيقدر يروح لبوت مختلف.</b>
+                حط توكن البوت (من BotFather) و Chat ID اللي بدك توصله الإشعارات. إذا تركت الحقول فاضية بتستخدم القناة البوت الافتراضي، وبتقدر توقف أي قناة من المفتاح.
+            </div>
+            <div class="tgn-list" id="tgnList"></div>
+            <div class="tgn-bar">
+                <span class="tgn-status" id="tgnStatus"></span>
+                <button class="tgn-test-all" onclick="tgNotifyTest(null)"><svg viewBox="0 0 24 24"><use href="#i-activity"/></svg> تجربة الكل</button>
+                <button class="tgn-save" id="tgnSaveBtn" onclick="tgnSave()">حفظ التغييرات</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="tgnTestModal">
+            <div class="modal-box" style="max-height: 90vh; overflow-y: auto;">
+                <div class="modal-title">نتيجة الرسالة التجريبية</div>
+                <div id="tgnTestBody"></div>
+                <button class="btn-secondary" style="margin-top:12px; width:100%;" onclick="closeModal('tgnTestModal')">إغلاق</button>
             </div>
         </div>
 
@@ -13817,6 +14112,191 @@ ADMIN_HTML_CONTENT = """
             btn.textContent = 'حفظ وتحديث البيانات';
         }
 
+        let tgnData = [];
+        let tgnDirty = false;
+        let tgnStatusTimer = null;
+        const TGN_ICONS = { cart: '#i-cart', wallet: '#i-wallet', zap: '#i-zap', user: '#i-user-plus', trend: '#i-trending', alert: '#i-x-circle' };
+
+        function tgnEsc(s) {
+            return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function tgnSvg(id) { return '<svg viewBox="0 0 24 24"><use href="' + id + '"/></svg>'; }
+
+        function tgnSetStatus(msg, isErr) {
+            const el = document.getElementById('tgnStatus');
+            if (!el) return;
+            el.textContent = msg || '';
+            el.className = 'tgn-status' + (isErr ? ' err' : '');
+            if (tgnStatusTimer) clearTimeout(tgnStatusTimer);
+            if (msg && !isErr) tgnStatusTimer = setTimeout(function () { el.textContent = ''; }, 3000);
+        }
+
+        async function openTgNotifyScreen() {
+            toggleSidebar();
+            tgnDirty = false;
+            tgnSetStatus('');
+            document.getElementById('tgNotifyScreen').classList.add('active');
+            document.getElementById('tgnList').innerHTML = '<div class="tgr-load">جاري التحميل...</div>';
+            try {
+                const r = await autoDepPost('/api/tg_notify_get');
+                if (r.status === 'success') { tgnData = r.channels || []; tgnRender(); }
+                else { document.getElementById('tgnList').innerHTML = '<div class="tgr-load">' + tgnEsc(r.message || 'حدث خطأ') + '</div>'; }
+            } catch (e) {
+                document.getElementById('tgnList').innerHTML = '<div class="tgr-load">تعذر الاتصال بالسيرفر</div>';
+            }
+        }
+
+        function closeTgNotifyScreen() {
+            if (tgnDirty && !confirm('في تغييرات ما انحفظت، بدك تطلع بدون حفظ؟')) return;
+            tgnDirty = false;
+            document.getElementById('tgNotifyScreen').classList.remove('active');
+        }
+
+        function tgnBadge(c) {
+            if (!c.uses_default) return '<span class="tgn-badge on">بوت مخصص</span>';
+            if (c.inherits) {
+                const p = tgnData.find(function (x) { return x.kind === c.inherits; });
+                return '<span class="tgn-badge inh">يتبع ' + tgnEsc(p ? p.title : 'قناة أخرى') + '</span>';
+            }
+            return '<span class="tgn-badge">البوت الافتراضي</span>';
+        }
+
+        function tgnRender() {
+            const box = document.getElementById('tgnList');
+            box.innerHTML = '';
+            tgnData.forEach(function (c, i) {
+                const card = document.createElement('div');
+                card.className = 'tgn-card' + (c.enabled ? '' : ' off');
+                card.setAttribute('data-k', c.kind);
+                card.style.animationDelay = (i * 0.05) + 's';
+                const hint = c.has_token
+                    ? ('التوكن محفوظ' + (c.token_hint ? ' (ينتهي بـ ' + tgnEsc(c.token_hint) + ')' : '') + ' - اتركه فارغاً للإبقاء عليه')
+                    : 'ما في توكن مخصص بعد';
+                card.innerHTML =
+                    '<div class="tgn-head">' +
+                        '<div class="tgn-who"><span class="tgn-ic">' + tgnSvg(TGN_ICONS[c.icon] || '#i-send') + '</span>' +
+                            '<div><div class="tgn-name">' + tgnEsc(c.title) + '</div><div class="tgn-desc">' + tgnEsc(c.desc) + '</div></div></div>' +
+                        '<label class="tgn-switch" title="تفعيل / إيقاف القناة"><input type="checkbox" data-f="en"' + (c.enabled ? ' checked' : '') + '><span></span></label>' +
+                    '</div>' +
+                    tgnBadge(c) +
+                    '<div class="tgn-field"><label>توكن البوت</label>' +
+                        '<div class="tgn-inrow"><input type="password" class="tgn-input" data-f="token" placeholder="123456789:AAxxxxxxxxxxxxxxxx" autocomplete="off">' +
+                        '<button type="button" class="tgn-mini ghost" onclick="tgnToggleEye(this)">إظهار</button></div>' +
+                        '<div class="tgn-sub" data-f="hint">' + hint + '</div></div>' +
+                    '<div class="tgn-field"><label>Chat ID (رقم المحادثة أو @اسم_القناة)</label>' +
+                        '<input type="text" class="tgn-input" data-f="chat" placeholder="مثال: 8694276183" value="' + tgnEsc(c.chat_id) + '" autocomplete="off"></div>' +
+                    '<div class="tgn-actions">' +
+                        '<button type="button" class="tgn-mini" data-k="' + tgnEsc(c.kind) + '" onclick="tgnTestOne(this.getAttribute(&quot;data-k&quot;))">تجربة</button>' +
+                        '<button type="button" class="tgn-mini ghost" data-k="' + tgnEsc(c.kind) + '" onclick="tgnReset(this.getAttribute(&quot;data-k&quot;))">استعادة الافتراضي</button>' +
+                    '</div>';
+                card.addEventListener('input', function () { tgnDirty = true; });
+                card.querySelector('[data-f="en"]').addEventListener('change', function (e) {
+                    card.classList.toggle('off', !e.target.checked);
+                    tgnDirty = true;
+                });
+                box.appendChild(card);
+            });
+        }
+
+        function tgnToggleEye(btn) {
+            const inp = btn.parentNode.querySelector('input');
+            const show = inp.type === 'password';
+            inp.type = show ? 'text' : 'password';
+            btn.textContent = show ? 'إخفاء' : 'إظهار';
+        }
+
+        function tgnCard(kind) {
+            return document.querySelector('#tgnList .tgn-card[data-k="' + kind + '"]');
+        }
+
+        function tgnReset(kind) {
+            const card = tgnCard(kind);
+            if (!card) return;
+            card.setAttribute('data-reset', '1');
+            card.querySelector('[data-f="token"]').value = '';
+            card.querySelector('[data-f="chat"]').value = '';
+            card.querySelector('[data-f="en"]').checked = true;
+            card.classList.remove('off');
+            card.querySelector('[data-f="hint"]').textContent = 'سيرجع للبوت الافتراضي بعد الضغط على حفظ التغييرات';
+            tgnDirty = true;
+        }
+
+        async function tgnSave(silent) {
+            const channels = {};
+            document.querySelectorAll('#tgnList .tgn-card').forEach(function (card) {
+                const k = card.getAttribute('data-k');
+                channels[k] = {
+                    token: card.querySelector('[data-f="token"]').value.trim(),
+                    chat_id: card.querySelector('[data-f="chat"]').value.trim(),
+                    enabled: card.querySelector('[data-f="en"]').checked,
+                    reset: card.getAttribute('data-reset') === '1'
+                };
+            });
+            const btn = document.getElementById('tgnSaveBtn');
+            btn.disabled = true;
+            btn.textContent = 'جاري الحفظ...';
+            let ok = false;
+            try {
+                const r = await autoDepPost('/api/tg_notify_save', { channels: channels });
+                if (r.status === 'success') {
+                    tgnData = r.channels || [];
+                    tgnDirty = false;
+                    tgnRender();
+                    tgnSetStatus('تم حفظ الإعدادات ✓', false);
+                    ok = true;
+                } else {
+                    tgnSetStatus(r.message || 'حدث خطأ', true);
+                    if (!silent) alert(r.message || 'حدث خطأ');
+                }
+            } catch (e) {
+                tgnSetStatus('تعذر الاتصال بالسيرفر', true);
+            }
+            btn.disabled = false;
+            btn.textContent = 'حفظ التغييرات';
+            return ok;
+        }
+
+        function tgNotifyTestFromMenu() {
+            toggleSidebar();
+            tgNotifyTest(null);
+        }
+
+        async function tgnTestOne(kind) {
+            await tgNotifyTest(kind);
+        }
+
+        async function tgNotifyTest(kind) {
+            const screenOpen = document.getElementById('tgNotifyScreen').classList.contains('active');
+            if (screenOpen && tgnDirty) {
+                const saved = await tgnSave(true);
+                if (!saved) return;
+            }
+            const body = document.getElementById('tgnTestBody');
+            body.innerHTML = '<div class="tgr-load">جاري إرسال الرسالة التجريبية...</div>';
+            openModal('tgnTestModal');
+            try {
+                const r = await autoDepPost('/api/tg_notify_test', kind ? { kind: kind } : {});
+                if (r.status !== 'success') {
+                    body.innerHTML = '<div class="tgr-load">' + tgnEsc(r.message || 'حدث خطأ') + '</div>';
+                    return;
+                }
+                const rows = r.results || [];
+                const okN = rows.filter(function (x) { return x.state === 'ok'; }).length;
+                let h = '<div class="tgr-sum">وصلت ' + okN + ' من ' + rows.length + '</div>';
+                rows.forEach(function (x) {
+                    const cls = x.state === 'ok' ? 'ok' : (x.state === 'disabled' ? 'off' : (x.state === 'missing' ? 'missing' : 'fail'));
+                    const ic = cls === 'ok' ? '#i-check' : (cls === 'off' ? '#i-clock' : '#i-x');
+                    h += '<div class="tgr-row"><span class="tgr-ic ' + cls + '">' + tgnSvg(ic) + '</span><div>' +
+                        '<div class="tgr-t">' + tgnEsc(x.title) + '</div>' +
+                        (x.bot ? '<div class="tgr-b">' + tgnEsc(x.bot) + '</div>' : '') +
+                        '<div class="tgr-m">' + tgnEsc(x.message) + '</div></div></div>';
+                });
+                body.innerHTML = h;
+            } catch (e) {
+                body.innerHTML = '<div class="tgr-load">تعذر الاتصال بالسيرفر</div>';
+            }
+        }
+
         let adhData = [];
         let adhStats = {};
         let adhFilter = 'all';
@@ -15920,11 +16400,14 @@ def push_unsubscribe(email, endpoint):
 # إشعارات الأدمن عند ربط / فك ربط بوت التلغرام
 # --------------------------------------------------
 def _send_admin_html(text):
+    _tg_tok, _tg_chat = tg_notify_target("registrations")
+    if not _tg_tok or not _tg_chat:
+        return
     def _run():
         try:
-            payload = json.dumps({"chat_id": TELEGRAM_ADMIN_CHAT_ID, "text": text, "parse_mode": "HTML"}).encode("utf-8")
+            payload = json.dumps({"chat_id": _tg_chat, "text": text, "parse_mode": "HTML"}).encode("utf-8")
             req = urllib.request.Request(
-                f"https://api.telegram.org/bot{TELEGRAM_PURCHASE_BOT_TOKEN}/sendMessage",
+                f"https://api.telegram.org/bot{_tg_tok}/sendMessage",
                 data=payload, headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=10):
                 pass
@@ -17156,6 +17639,9 @@ ADMIN_PATH_PERMS = {
     "/api/auto_deposit_save": "deposits",
     "/api/auto_deposit_toggle": "deposits",
     "/api/auto_deposit_history": "deposits",
+    "/api/tg_notify_get": "settings",
+    "/api/tg_notify_save": "settings",
+    "/api/tg_notify_test": "settings",
     "/api/manage_balance": "balance",
     "/api/add_category": "products",
     "/api/delete_category": "products",
@@ -17205,6 +17691,7 @@ ADMIN_ACTION_LABELS = {
     "/api/delete_deposit_method": "حذف طريقة إيداع",
     "/api/auto_deposit_save": "حفظ إعدادات إيداع تلقائي",
     "/api/auto_deposit_toggle": "تفعيل/إيقاف إيداع تلقائي",
+    "/api/tg_notify_save": "حفظ إعدادات الإشعارات",
     "/api/manage_balance": "تعديل رصيد مستخدم",
     "/api/add_category": "إضافة قسم",
     "/api/delete_category": "حذف قسم",
@@ -17791,6 +18278,7 @@ def _auto_dep_api_error_text(code):
 
 
 def _auto_dep_notify(info):
+    _tg_tok, _tg_chat = tg_notify_target("auto_deposits")
     try:
         with POST_LOCK:
             sep = "━━━━━━━━━━━━━━"
@@ -17809,7 +18297,7 @@ def _auto_dep_notify(info):
     except Exception as e:
         logging.error("فشل إشعار المستخدم بالإيداع التلقائي: %s" % e)
     try:
-        if TELEGRAM_PURCHASE_BOT_TOKEN and TELEGRAM_PURCHASE_BOT_TOKEN != "YOUR_TELEGRAM_BOT_TOKEN":
+        if _tg_tok and _tg_tok != "YOUR_TELEGRAM_BOT_TOKEN":
             sep = "ـــــــــــــــــــــــــــــ"
             e_ = html_lib.escape
             text = (
@@ -17826,9 +18314,9 @@ def _auto_dep_notify(info):
                 "<b>رصيده الان:</b> " + tg_money(info["new_balance"]) + " $\n"
                 "<b>التاريخ:</b> " + e_(info["date"])
             )
-            payload = json.dumps({"chat_id": TELEGRAM_ADMIN_CHAT_ID, "text": text, "parse_mode": "HTML"}).encode("utf-8")
+            payload = json.dumps({"chat_id": _tg_chat, "text": text, "parse_mode": "HTML"}).encode("utf-8")
             req = urllib.request.Request(
-                "https://api.telegram.org/bot%s/sendMessage" % TELEGRAM_PURCHASE_BOT_TOKEN,
+                "https://api.telegram.org/bot%s/sendMessage" % _tg_tok,
                 data=payload, headers={"Content-Type": "application/json"}, method="POST")
             urllib.request.urlopen(req, timeout=8).read()
     except Exception as e:
@@ -19186,6 +19674,20 @@ self.addEventListener('fetch', event => {
             self.end_headers()
             self.wfile.write(json.dumps(result, ensure_ascii=False).encode("utf-8"))
             return
+        if self.path == "/api/tg_notify_test":
+            # خارج POST_LOCK حتى ما يعلّق السيرفر أثناء الاتصال بتلغرام
+            try:
+                n = int(self.headers.get('Content-Length') or 0)
+                body = json.loads(self.rfile.read(min(n, 100000)).decode('utf-8')) if n else {}
+                d = body if isinstance(body, dict) else {}
+                if self._admin_gate(self.path, d) is None:
+                    return
+                result = tg_notify_test(d.get("kind"))
+            except Exception as e:
+                logging.error("tg_notify_test: %s" % e)
+                result = {"status": "error", "message": "حدث خطأ أثناء التجربة"}
+            self._reply_json(result)
+            return
         with POST_LOCK:
             self._do_POST_locked()
 
@@ -20072,6 +20574,10 @@ self.addEventListener('fetch', event => {
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "success", "new_balance": new_bal}).encode("utf-8"))
+
+        elif self.path in ("/api/tg_notify_get", "/api/tg_notify_save"):
+            result = tg_notify_admin_action(self.path, data if isinstance(data, dict) else {})
+            self._reply_json(result)
 
         elif self.path in ("/api/auto_deposit_admin_list", "/api/auto_deposit_save", "/api/auto_deposit_toggle", "/api/auto_deposit_history"):
             result = auto_deposit_admin_action(self.path, data if isinstance(data, dict) else {})
