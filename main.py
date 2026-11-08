@@ -1162,6 +1162,7 @@ class ApiPriceMonitor:
                 updated_count = 0
                 desc_changed = False
                 price_changes = []
+                _content_cache = {}
 
                 for subcat in subcats:
                     api_id = str(subcat.get('api_product_id', ''))
@@ -1192,6 +1193,8 @@ class ApiPriceMonitor:
 
                     # مزامنة الوصف من الـ API (بدون المساس بوصف عدّلته يدوياً)
                     new_desc, new_desc_real = api_description(api_product)
+                    if not new_desc:
+                        new_desc = _content_desc_lookup(base_url, token, api_product, _content_cache)
                     if new_desc and (not subcat.get('description') or subcat.get('desc_api')) \
                             and subcat.get('description') != new_desc:
                         subcat['description'] = new_desc
@@ -1428,6 +1431,25 @@ def api_description(*nodes):
         if t:
             return t, True
     return '', False
+
+
+def _content_desc_lookup(base_url, token, api_product, cache):
+    """لو /products ما رجّع وصف: نقرأه من /content/{parent_id} (هناك غالباً الوصف الكامل للفئة)."""
+    try:
+        pid = str(api_product.get('id'))
+        parent = str(api_product.get('parent_id', 0))
+        if parent not in cache:
+            url = f"{base_url}client/api/content/{urllib.parse.quote(parent, safe='')}"
+            cache[parent] = _extract_content_lists(make_api_request(url, token, timeout=20))
+        cats, prods = cache[parent]
+        for node in list(prods) + list(cats):
+            if str(node.get('id')) == pid:
+                t = api_description(node)[0]
+                if t:
+                    return t
+    except Exception as e:
+        logging.info(f"[وصف] تعذر قراءة /content للفئة {api_product.get('id')}: {e}")
+    return ''
 
 
 def _api_param_labels(*nodes):
@@ -1750,7 +1772,7 @@ class ApiTreeImport:
             })
             return gid
 
-    def add_leaf(self, p, site_product, group_id, prefix):
+    def add_leaf(self, p, site_product, group_id, prefix, parent_desc=''):
         pid = p.get('id')
         if pid is None:
             return
@@ -1772,6 +1794,8 @@ class ApiTreeImport:
         base_price = _to_float(base_raw if base_raw not in (None, '') else src.get('price'))
         price = round(base_price * (1 + self.margin / 100.0), 10)
         desc, desc_is_real = api_description(p, extra)
+        if not desc and parent_desc:
+            desc = parent_desc  # الفئة ما إلها وصف → نرث وصف القسم الأب
         if not desc and getattr(self, '_desc_miss_logged', 0) < 3:
             self._desc_miss_logged = getattr(self, '_desc_miss_logged', 0) + 1
             logging.info(f"[وصف] المزود ما رجّع وصف للفئة {pid_s}. الحقول المتاحة: {sorted(str(k) for k in src.keys())}")
@@ -1854,7 +1878,7 @@ class ApiTreeImport:
         time.sleep(IMPORT_ITEM_DELAY)
 
     # ---------- المشي على الشجرة ----------
-    def process_node(self, node_id, node, level, site_product=None, group_id=None, prefix=''):
+    def process_node(self, node_id, node, level, site_product=None, group_id=None, prefix='', inherited_desc=''):
         self.check_cancel()
         key = str(node_id)
         if key in self.visited or level > IMPORT_MAX_DEPTH:
@@ -1869,6 +1893,8 @@ class ApiTreeImport:
         cats, prods = self.get_children(node_id, node)
         self.discovered += len(cats)
 
+        _pdesc = (api_description(node)[0] if isinstance(node, dict) else '') or inherited_desc
+
         def do_children():
             for c in cats:
                 self.check_cancel()
@@ -1881,14 +1907,14 @@ class ApiTreeImport:
                 if level == 0:
                     sp = self.ensure_site_product(cid, cname, cimg)
                     _job_inc(self.job, 'subsections')
-                    self.process_node(cid, c, 1, site_product=sp)
+                    self.process_node(cid, c, 1, site_product=sp, inherited_desc=_pdesc)
                 elif level == 1:
                     gid = self.ensure_group(site_product, cid, cname, cimg)
                     _job_inc(self.job, 'products')
-                    self.process_node(cid, c, 2, site_product=site_product, group_id=gid)
+                    self.process_node(cid, c, 2, site_product=site_product, group_id=gid, inherited_desc=_pdesc)
                 else:
                     new_prefix = f"{prefix} - {cname}" if prefix else cname
-                    self.process_node(cid, c, level + 1, site_product=site_product, group_id=group_id, prefix=new_prefix)
+                    self.process_node(cid, c, level + 1, site_product=site_product, group_id=group_id, prefix=new_prefix, inherited_desc=_pdesc)
 
         def do_leaves():
             if not prods:
@@ -1901,7 +1927,7 @@ class ApiTreeImport:
                 _job_inc(self.job, 'subsections')
             for p in prods:
                 self.check_cancel()
-                self.add_leaf(p, target_product, target_group, prefix if level >= 3 else '')
+                self.add_leaf(p, target_product, target_group, prefix if level >= 3 else '', parent_desc=_pdesc)
 
         if level >= 2:
             # داخل المنتج: فئاته أولاً ثم ما تفرّع منه (مسطّحاً)
@@ -3107,7 +3133,124 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .cancel-btn-outline:active { transform: scale(0.96); }
         .purchase-notice-box { display: flex; align-items: flex-start; gap: 10px; background-color: #16132d; border-radius: 12px; padding: 12px; position: relative; }
         .purchase-notice-line { width: 3px; background-color: #daa520; border-radius: 3px; position: absolute; right: 0; top: 10px; bottom: 10px; }
-        .purchase-notice-text { font-size: 0.8rem; color: #b0aec4; line-height: 1.5; text-align: right; padding-right: 8px; }
+        .purchase-notice-text { font-size: 0.8rem; color: #b0aec4; line-height: 1.7; text-align: right; padding-right: 8px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; min-width: 0; flex: 1; }
+        #purchaseModal .modal-box { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+        #purchaseModal .purchase-notice-box { flex-shrink: 0; }
+
+        /* ===== نافذة الشراء الفخمة ===== */
+        #purchaseModal { align-items: center; }
+        #purchaseModal .pm-box {
+            position: relative; overflow-x: hidden; overflow-y: auto;
+            width: 92%; max-width: 400px; max-height: 92vh; padding: 20px 20px 22px; gap: 14px;
+            background: linear-gradient(165deg, #1b1738 0%, #0f0c22 55%, #0b0919 100%);
+            border: 1px solid rgba(218, 165, 32, 0.45); border-radius: 26px;
+            box-shadow: 0 25px 70px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.03) inset, 0 0 45px rgba(218,165,32,0.12);
+            transform: translateY(26px) scale(0.96); opacity: 0;
+            transition: transform 0.35s cubic-bezier(.2,.9,.3,1.2), opacity 0.25s ease;
+            scrollbar-width: thin; scrollbar-color: #daa520 transparent;
+        }
+        #purchaseModal.active .pm-box { transform: none; opacity: 1; }
+        #purchaseModal .pm-box::-webkit-scrollbar { width: 4px; }
+        #purchaseModal .pm-box::-webkit-scrollbar-thumb { background: #daa520; border-radius: 4px; }
+        #purchaseModal .pm-box > * { position: relative; z-index: 1; flex-shrink: 0; }
+        #purchaseModal .pm-glow {
+            position: absolute !important; z-index: 0 !important; top: -90px; left: 50%; transform: translateX(-50%);
+            width: 320px; height: 200px; pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(218,165,32,0.28) 0%, transparent 70%);
+        }
+        #purchaseModal .pm-close {
+            position: absolute; top: 14px; left: 14px; z-index: 5; width: 30px; height: 30px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #cfcbe6; transition: all .2s;
+        }
+        #purchaseModal .pm-close:active { transform: scale(.9); background: rgba(248,113,113,0.2); color: #f87171; }
+
+        #purchaseModal .pm-hero { display: flex; align-items: center; gap: 14px; padding: 6px 0 2px 38px; direction: rtl; }
+        #purchaseModal .pm-img {
+            width: 68px; height: 68px; border-radius: 18px; flex: 0 0 auto; padding: 2px;
+            background: linear-gradient(135deg, #f5d27a, #b8860b 55%, #f5d27a);
+            box-shadow: 0 8px 22px rgba(218,165,32,0.35);
+        }
+        #purchaseModal .pm-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; display: block; background: #15122b; }
+        #purchaseModal .pm-hero-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; align-items: flex-start; }
+        #purchaseModal .pm-kicker {
+            display: inline-flex; align-items: center; gap: 5px; font-size: 0.66rem; font-weight: 800; letter-spacing: .3px;
+            color: #f5d27a; background: rgba(218,165,32,0.12); border: 1px solid rgba(218,165,32,0.35);
+            padding: 3px 10px; border-radius: 20px;
+        }
+        #purchaseModal .purchase-title-box { font-size: 1.1rem; font-weight: 800; line-height: 1.45; color: #fff; word-break: break-word; }
+
+        #purchaseModal .pm-price-card {
+            display: flex; align-items: center; justify-content: space-between; direction: rtl;
+            padding: 12px 16px; border-radius: 18px;
+            background: linear-gradient(135deg, rgba(218,165,32,0.14), rgba(218,165,32,0.04));
+            border: 1px solid rgba(218,165,32,0.3);
+        }
+        #purchaseModal .pm-price-label { font-size: 0.8rem; font-weight: 700; color: #b9b4d6; }
+        #purchaseModal .purchase-price-badge { font-size: 1.15rem; padding: 8px 20px; }
+        #purchaseModal .pm-local {
+            text-align: center; font-size: 0.85rem; font-weight: 800; color: #fde68a;
+            background: linear-gradient(135deg, rgba(120,53,15,0.85), rgba(146,64,14,0.85));
+            padding: 9px 12px; border-radius: 14px; border: 1px solid rgba(245,158,11,0.7);
+        }
+
+        #purchaseModal .pm-fields { display: flex; flex-direction: column; gap: 10px; }
+        #purchaseModal .pm-section-title {
+            font-size: 0.72rem; font-weight: 800; color: #f5d27a; text-align: right; margin: 0 4px 6px;
+            display: flex; align-items: center; gap: 8px; direction: rtl;
+        }
+        #purchaseModal .pm-section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to left, rgba(218,165,32,0.5), transparent); }
+        #purchaseModal .pm-fields .pm-section-title { margin-bottom: 0; }
+        #purchaseModal .purchase-input-custom, #purchaseModal .counter-qty-box {
+            padding: 14px 16px; font-size: 0.92rem; border-radius: 16px; background: rgba(8,6,20,0.7);
+            border: 1px solid #2e2850; box-shadow: inset 0 2px 8px rgba(0,0,0,0.35);
+        }
+        #purchaseModal .purchase-input-custom:focus, #purchaseModal .counter-qty-box:focus {
+            border-color: #daa520; box-shadow: 0 0 0 3px rgba(218,165,32,0.18), inset 0 2px 8px rgba(0,0,0,0.35);
+        }
+        #purchaseModal .counter-total-box { margin-top: 10px; border-radius: 16px; padding: 12px 14px; }
+
+        #purchaseModal .purchase-buttons-grid { grid-template-columns: 1fr 1.7fr; gap: 10px; margin-top: 2px; }
+        #purchaseModal .buy-btn-gold {
+            position: relative; overflow: hidden; padding: 15px 12px; font-size: 1.05rem; border-radius: 18px;
+            background: linear-gradient(135deg, #f5d27a 0%, #daa520 45%, #b8860b 100%);
+            box-shadow: 0 8px 24px rgba(218,165,32,0.45), 0 1px 0 rgba(255,255,255,0.5) inset;
+        }
+        #purchaseModal .buy-btn-gold::after {
+            content: ""; position: absolute; top: 0; left: -80%; width: 50%; height: 100%;
+            background: linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent);
+            transform: skewX(-20deg); animation: pmShine 3.2s ease-in-out infinite;
+        }
+        @keyframes pmShine { 0%, 55% { left: -80%; } 100% { left: 140%; } }
+        #purchaseModal .buy-btn-gold:disabled { opacity: .6; cursor: not-allowed; }
+        #purchaseModal .buy-btn-gold:disabled::after { animation: none; }
+        #purchaseModal .cancel-btn-outline {
+            padding: 15px 10px; border-radius: 18px; font-size: 0.95rem;
+            background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.45);
+        }
+
+        #purchaseModal .purchase-notice-box {
+            display: flex; flex-direction: column; align-items: stretch; gap: 8px; direction: rtl;
+            padding: 14px 16px; border-radius: 18px; background: rgba(8,6,20,0.55);
+            border: 1px solid rgba(218,165,32,0.22); border-right: 3px solid #daa520;
+        }
+        #purchaseModal .pm-desc-head { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; font-weight: 800; color: #f5d27a; }
+        #purchaseModal .purchase-notice-text { padding: 0; font-size: 0.84rem; line-height: 1.85; color: #cfcbe6; }
+
+        @media (max-width: 520px) {
+            #purchaseModal { align-items: flex-end; }
+            #purchaseModal .pm-box {
+                width: 100%; max-width: 100%; max-height: 94vh; border-radius: 28px 28px 0 0;
+                border-bottom: none; padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+                transform: translateY(100%); opacity: 1;
+            }
+            #purchaseModal.active .pm-box { transform: none; }
+            #purchaseModal .pm-box::before {
+                content: ""; display: block; width: 44px; height: 4px; border-radius: 4px;
+                background: rgba(255,255,255,0.22); margin: -8px auto 0; flex-shrink: 0;
+            }
+        }
+
 
         .dep-desc-box { background-color: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-size: 0.78rem; color: var(--subtext-color); line-height: 1.4; }
         .dep-code-box {
@@ -4390,22 +4533,39 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="modal-overlay" id="purchaseModal">
-        <div class="modal-box">
-            <div class="purchase-top-row">
-                <div class="purchase-price-badge" id="pModalPrice">0 $</div>
-                <div class="purchase-title-box">
-                    <span id="pModalTitle">عنوان الفئة</span>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 8.5 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+    <div class="modal-overlay" id="purchaseModal" onclick="if(event.target===this)closePurchaseModal()">
+        <div class="modal-box pm-box">
+            <div class="pm-glow"></div>
+            <button type="button" class="pm-close" onclick="closePurchaseModal()" aria-label="إغلاق">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+
+            <div class="pm-hero">
+                <div class="pm-img" id="pModalImageWrap" style="display:none;"><img id="pModalImage" alt="" /></div>
+                <div class="pm-hero-text">
+                    <span class="pm-kicker">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.9L22 10l-5.4 4.7L18.2 22 12 18.3 5.8 22l1.6-7.3L2 10l7.1-1.1z"/></svg>
+                        تأكيد الشراء
+                    </span>
+                    <div class="purchase-title-box"><span id="pModalTitle">عنوان الفئة</span></div>
                 </div>
             </div>
 
-            <div id="pModalLocalPrice" style="display:none; text-align:center; font-size:0.85rem; font-weight:800; color:#f59e0b; background:linear-gradient(135deg,#78350f 0%,#92400e 100%); padding:8px 12px; border-radius:10px; border:1px solid #f59e0b;"></div>
+            <div class="pm-price-card">
+                <span class="pm-price-label">السعر</span>
+                <div class="purchase-price-badge" id="pModalPrice">0 $</div>
+            </div>
 
-            <input type="text" id="pModalRequirement" class="purchase-input-custom" placeholder="ايدي المستخدم" />
-            <div id="pModalExtraFields" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div id="pModalLocalPrice" class="pm-local" style="display:none;"></div>
+
+            <div class="pm-fields">
+                <div class="pm-section-title">البيانات المطلوبة</div>
+                <input type="text" id="pModalRequirement" class="purchase-input-custom" placeholder="ايدي المستخدم" />
+                <div id="pModalExtraFields" style="display:flex; flex-direction:column; gap:10px;"></div>
+            </div>
 
             <div id="pModalCounterBox" style="display:none;">
+                <div class="pm-section-title">الكمية</div>
                 <input type="number" id="pModalQuantity" class="counter-qty-box" placeholder="أدخل الكمية" min="1" oninput="calculateCounterTotal()" />
                 <div class="counter-total-box" id="pModalTotalBox">
                     <span class="counter-total-label">السعر الإجمالي:</span>
@@ -4419,7 +4579,10 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             </div>
 
             <div class="purchase-notice-box" id="pModalDescriptionBox" style="display:none;">
-                <div class="purchase-notice-line"></div>
+                <div class="pm-desc-head">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
+                    تفاصيل الفئة
+                </div>
                 <div class="purchase-notice-text" id="pModalDescriptionText"></div>
             </div>
         </div>
@@ -7021,6 +7184,20 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             isCounterCategory = subcat.is_counter === true;
             
             document.getElementById('pModalTitle').innerText = subcat.name;
+            (function () {
+                const w = document.getElementById('pModalImageWrap');
+                const im = document.getElementById('pModalImage');
+                const src = String(subcat.image || '').trim();
+                if (src) {
+                    im.onerror = function () { w.style.display = 'none'; };
+                    im.onload = function () { w.style.display = ''; };
+                    im.src = src;
+                    w.style.display = '';
+                } else {
+                    w.style.display = 'none';
+                    im.removeAttribute('src');
+                }
+            })();
             
             let displayPrice = subcat.price;
             if (isCounterCategory) {
