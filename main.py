@@ -1197,6 +1197,19 @@ class ApiPriceMonitor:
                         subcat['description'] = new_desc
                         subcat['desc_api'] = True
                         desc_changed = True
+                    elif not new_desc and subcat.get('desc_api') and _is_auto_desc(subcat.get('description'), api_product):
+                        subcat['description'] = ''
+                        subcat['desc_api'] = False
+                        desc_changed = True
+
+                    # مزامنة متطلبات الشراء (مستطيلات الإدخال بنافذة الشراء)
+                    _lbls = _api_param_labels(api_product)
+                    if _lbls != (subcat.get('api_params') or []):
+                        if _lbls:
+                            subcat['api_params'] = _lbls
+                        else:
+                            subcat.pop('api_params', None)
+                        desc_changed = True
 
                     # إذا كان في تغيير (مقارنة نسبية دقيقة حتى مع الأسعار الصغيرة جداً)
                     price_diff = abs(new_price - old_price) > (1e-12 + 1e-9 * abs(old_price))
@@ -1333,7 +1346,7 @@ def _node_name(d):
 DESC_KEYS = (
     'description', 'desc', 'details', 'detail', 'info', 'information', 'note', 'notes',
     'short_description', 'long_description', 'full_description', 'product_description',
-    'description_ar', 'description_en', 'about', 'summary', 'instructions', 'content', 'text', 'body',
+    'description_ar', 'description_en', 'about', 'summary', 'content', 'text', 'body',
     'وصف', 'الوصف', 'تفاصيل', 'التفاصيل', 'ملاحظات',
 )
 DESC_LANG_KEYS = ('ar', 'ar_SA', 'ar-SA', 'en', 'en_US', 'default')
@@ -1389,16 +1402,41 @@ def _node_desc_fallback(d):
 
 
 def api_description(*nodes):
-    """أفضل وصف متاح من عدة مصادر (العقدة نفسها ثم قائمة المنتجات)، وإلا الوصف المبني."""
+    """وصف الفئة الحقيقي من الـ API فقط (العقدة نفسها ثم قائمة المنتجات).
+    ما عاد نبني وصفاً من متطلبات الشراء (المطلوب/الكمية) لأن هذي بتظهر كمستطيلات إدخال بنافذة الشراء."""
     for n in nodes:
         t = _node_desc(n)
         if t:
             return t, True
-    for n in nodes:
-        t = _node_desc_fallback(n)
-        if t:
-            return t, False
     return '', False
+
+
+def _api_param_labels(*nodes):
+    """أسماء متطلبات الشراء من الـ API (params) بنفس الترتيب. مثال: ["ادخل الايدي", "السيرفر"]."""
+    for n in nodes:
+        if not isinstance(n, dict):
+            continue
+        ps = n.get('params')
+        if not isinstance(ps, list):
+            continue
+        labels = []
+        for it in ps:
+            if isinstance(it, dict):
+                it = _first_value(it, ('label', 'name', 'title', 'key'))
+            it = str(it or '').strip()
+            if it and it not in labels:
+                labels.append(it)
+        if labels:
+            return labels
+    return []
+
+
+def _is_auto_desc(text, node):
+    """هل هذا الوصف هو النص القديم المبني تلقائياً من المتطلبات؟ (لتنظيفه من الفئات المسحوبة سابقاً)"""
+    text = (text or '').strip()
+    if not text:
+        return False
+    return text == _node_desc_fallback(node).strip() or text.startswith('المطلوب:') or text.startswith('الكميات المتاحة:')
 
 
 def _abs_img(base_url, img):
@@ -1715,6 +1753,7 @@ class ApiTreeImport:
         base_price = _to_float(base_raw if base_raw not in (None, '') else src.get('price'))
         price = round(base_price * (1 + self.margin / 100.0), 10)
         desc, desc_is_real = api_description(p, extra)
+        param_labels = _api_param_labels(src, p, extra)
         image = _node_image(self.base_url, p) or _node_image(self.base_url, extra)
 
         is_counter, cmin, cmax = False, 1, None
@@ -1744,6 +1783,14 @@ class ApiTreeImport:
                 if desc:
                     ex['description'] = desc
                     ex['desc_api'] = True
+                elif ex.get('desc_api') and _is_auto_desc(ex.get('description'), src):
+                    # وصف قديم مبني من المتطلبات → نشيله (المتطلبات صارت مستطيلات بنافذة الشراء)
+                    ex['description'] = ''
+                    ex['desc_api'] = False
+                if param_labels:
+                    ex['api_params'] = param_labels
+                else:
+                    ex.pop('api_params', None)
                 if image and not ex.get('image'):
                     ex['image'] = image
                 if is_counter:
@@ -1770,6 +1817,8 @@ class ApiTreeImport:
                     "desc_api": bool(desc),
                     "profit_margin": self.margin
                 }
+                if param_labels:
+                    new_sub['api_params'] = param_labels
                 if group_id:
                     new_sub['group_id'] = group_id
                 if is_counter:
@@ -2161,7 +2210,29 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/pwa-icon">
     <link rel="icon" type="image/png" href="/pwa-icon">
-    <title>SYRIA CARD ONE</title>
+    <title>SYRIA CARD ONE | شحن ألعاب وبطاقات رقمية في سوريا بأفضل الأسعار</title>
+    <meta name="description" content="SYRIA CARD ONE منصة رقمية متكاملة لشحن الألعاب (شدات ببجي، فري فاير وغيرها) والبطاقات الرقمية في سوريا. أسعار منافسة، تنفيذ سريع، وخدمة موثوقة على مدار الساعة.">
+    <meta name="keywords" content="SYRIA CARD ONE, سيريا كارد ون, شحن ألعاب, شحن شدات ببجي, شحن فري فاير, بطاقات رقمية, بطاقات ألعاب, شحن سوريا, متجر شحن سوريا, UC PUBG">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+    <meta name="author" content="SYRIA CARD ONE">
+    <meta name="language" content="Arabic">
+    <meta name="geo.region" content="SY">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="canonical" href="__SITE_URL__/">
+    <link rel="alternate" hreflang="ar" href="__SITE_URL__/">
+    <link rel="alternate" hreflang="x-default" href="__SITE_URL__/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="SYRIA CARD ONE">
+    <meta property="og:locale" content="ar_AR">
+    <meta property="og:title" content="SYRIA CARD ONE | شحن ألعاب وبطاقات رقمية في سوريا">
+    <meta property="og:description" content="منصة رقمية متكاملة لشحن الألعاب والبطاقات الرقمية بأسعار منافسة وتنفيذ سريع.">
+    <meta property="og:url" content="__SITE_URL__/">
+    <meta property="og:image" content="__SITE_URL__/pwa-icon">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="SYRIA CARD ONE | شحن ألعاب وبطاقات رقمية في سوريا">
+    <meta name="twitter:description" content="منصة رقمية متكاملة لشحن الألعاب والبطاقات الرقمية بأسعار منافسة وتنفيذ سريع.">
+    <meta name="twitter:image" content="__SITE_URL__/pwa-icon">
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"__SITE_URL__/#website","url":"__SITE_URL__/","name":"SYRIA CARD ONE","inLanguage":"ar","description":"منصة رقمية متكاملة لشحن الألعاب والبطاقات الرقمية في سوريا"},{"@type":"Organization","@id":"__SITE_URL__/#org","name":"SYRIA CARD ONE","url":"__SITE_URL__/","logo":"__SITE_URL__/pwa-icon","areaServed":"SY"}]}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=Almarai:wght@400;700;800&family=Changa:wght@400;600;700;800&family=El+Messiri:wght@400;600;700&family=Lateef&family=Amiri:wght@400;700&family=Scheherazade+New:wght@400;700&family=Noto+Kufi+Arabic:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Readex+Pro:wght@400;600;700&family=Alexandria:wght@400;600;700&family=Noto+Naskh+Arabic:wght@400;700&family=Harmattan&family=Mada:wght@400;700&display=swap" rel="stylesheet">
@@ -2448,7 +2519,18 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             padding: 6px 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             width: 100%; height: var(--top-header-height);
             overflow: hidden; transition: height 0.2s ease;
+            position: relative; isolation: isolate;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -1px 0 rgba(0,0,0,0.18);
         }
+        /* لمعة ناعمة تمر على الهيدر */
+        .header::after {
+            content: ''; position: absolute; top: 0; left: -60%; width: 38%; height: 100%;
+            background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.32) 50%, rgba(255,255,255,0.05) 75%, transparent 100%);
+            transform: skewX(-22deg); pointer-events: none; z-index: 5;
+            animation: headerShine 5.5s ease-in-out infinite;
+        }
+        @keyframes headerShine { 0% { left: -60%; } 55%, 100% { left: 140%; } }
+        @media (prefers-reduced-motion: reduce) { .header::after { animation: none; display: none; } }
         .header-right { display: flex; align-items: center; gap: 8px; }
         .header-logo {
             width: calc(var(--top-header-height) * 0.55); height: calc(var(--top-header-height) * 0.55);
@@ -3607,6 +3689,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
     </style>
 </head>
 <body>
+    <h1 style="position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">SYRIA CARD ONE - شحن ألعاب وبطاقات رقمية في سوريا</h1>
+    <noscript><p style="padding:16px;text-align:center;">SYRIA CARD ONE منصة رقمية لشحن الألعاب والبطاقات الرقمية في سوريا. يرجى تفعيل جافاسكربت لاستخدام المتجر.</p></noscript>
 
     <!-- MAINTENANCE SCREEN -->
     <div id="maintenanceScreen">
@@ -4218,6 +4302,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             <div id="pModalLocalPrice" style="display:none; text-align:center; font-size:0.85rem; font-weight:800; color:#f59e0b; background:linear-gradient(135deg,#78350f 0%,#92400e 100%); padding:8px 12px; border-radius:10px; border:1px solid #f59e0b;"></div>
 
             <input type="text" id="pModalRequirement" class="purchase-input-custom" placeholder="ايدي المستخدم" />
+            <div id="pModalExtraFields" style="display:flex; flex-direction:column; gap:10px;"></div>
 
             <div id="pModalCounterBox" style="display:none;">
                 <input type="number" id="pModalQuantity" class="counter-qty-box" placeholder="أدخل الكمية" min="1" oninput="calculateCounterTotal()" />
@@ -6803,7 +6888,22 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 localPriceEl.style.display = 'none';
             }
             
-            document.getElementById('pModalRequirement').value = '';
+            // متطلبات الشراء: الأول بالمستطيل الأساسي، وكل متطلب إضافي بمستطيل جديد باسمه
+            const reqLabels = Array.isArray(subcat.api_params) ? subcat.api_params.filter(Boolean) : [];
+            const reqEl = document.getElementById('pModalRequirement');
+            reqEl.value = '';
+            reqEl.placeholder = reqLabels[0] || 'ايدي المستخدم';
+            const extraBox = document.getElementById('pModalExtraFields');
+            extraBox.innerHTML = '';
+            reqLabels.slice(1).forEach(function (lb) {
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.className = 'purchase-input-custom pmodal-extra';
+                inp.placeholder = lb;
+                inp.setAttribute('data-label', lb);
+                inp.setAttribute('autocomplete', 'off');
+                extraBox.appendChild(inp);
+            });
             
             const submitBtn = document.getElementById('submitPurchaseBtn');
             const cancelBtn = document.getElementById('cancelPurchaseBtn');
@@ -6857,7 +6957,17 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         async function submitPurchase() {
             const req = document.getElementById('pModalRequirement').value.trim();
-            if (!req) { alert('يرجى كتابة متطلبات شراء الخدمة (ايدي المستخدم)!'); return; }
+            const firstLabel = (activeSubCategory && Array.isArray(activeSubCategory.api_params) && activeSubCategory.api_params[0]) || 'ايدي المستخدم';
+            if (!req) { alert('يرجى كتابة متطلبات شراء الخدمة (' + firstLabel + ')!'); return; }
+
+            const extraParams = [];
+            const extraEls = document.querySelectorAll('#pModalExtraFields .pmodal-extra');
+            for (let i = 0; i < extraEls.length; i++) {
+                const v = extraEls[i].value.trim();
+                const lb = extraEls[i].getAttribute('data-label') || '';
+                if (!v) { alert('يرجى تعبئة: ' + lb); return; }
+                extraParams.push({ label: lb, value: v });
+            }
 
             const savedEmail = localStorage.getItem('loggedInUserEmail');
             if (!savedEmail) {
@@ -6913,6 +7023,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                         provider_name: activeSubCategory.provider_name || '',
                         api_product_id: activeSubCategory.api_product_id || '',
                         input: req,
+                        extra_params: extraParams,
                         quantity: quantity,
                         is_counter: isCounterCategory
                     })
@@ -6933,7 +7044,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 document.getElementById('rProduct').innerText = activeSubCategory.product;
                 document.getElementById('rSubCategory').innerText = activeSubCategory.name;
                 document.getElementById('rPrice').innerText = formatBalance(finalPrice) + " $";
-                document.getElementById('rInputs').innerText = req;
+                document.getElementById('rInputs').innerText = [req].concat(extraParams.map(function (e) { return e.label + ': ' + e.value; })).join(' | ');
                 document.getElementById('rQuantity').innerText = isCounterCategory ? quantity : '1';
                 document.getElementById('rStatus').innerText = data.order_status || "قيد الانتظار";
 
@@ -7377,6 +7488,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 </html>
 """
 
+USER_HTML_CONTENT = USER_HTML_CONTENT.replace("__SITE_URL__", SITE_BASE_URL)
+
 # --------------------------------------------------
 # 3. واجهة الإدمن الخاصة
 # --------------------------------------------------
@@ -7387,6 +7500,7 @@ ADMIN_HTML_CONTENT = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>لوحة القيادة - Admin</title>
+    <meta name="robots" content="noindex, nofollow, noarchive">
     <link media="print" onload="this.media='all';document.documentElement.className+=' bs-ok'" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
     <link media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -17436,9 +17550,36 @@ def sub_total_price(sub, quantity):
     return True, "", 1, round(_num(sub.get('price', 0)), PRICE_DECIMALS)
 
 
+def normalize_extra_params(sub, extra_params):
+    """يتحقق من متطلبات الشراء الإضافية (من الثاني وطالع) ويرجعها [{label, value}].
+    الأول دائماً playerId. يرجع (ok, رسالة, القائمة)."""
+    labels = [str(x).strip() for x in (sub.get('api_params') or []) if str(x).strip()]
+    wanted = labels[1:]
+    given = {}
+    if isinstance(extra_params, list):
+        for it in extra_params:
+            if isinstance(it, dict):
+                given[str(it.get('label', '')).strip()] = str(it.get('value', '')).strip()
+    elif isinstance(extra_params, dict):
+        given = {str(k).strip(): str(v).strip() for k, v in extra_params.items()}
+    out = []
+    for lb in wanted:
+        val = given.get(lb, '')
+        if not val:
+            return False, f"يرجى إدخال: {lb}", []
+        out.append({"label": lb, "value": val[:200]})
+    return True, "", out
+
+
+def build_extra_query(extra_list):
+    """يحوّل المتطلبات الإضافية لجزء من رابط الـ API (الاسم = نص المتطلب كما هو من المزود)."""
+    return ''.join(f"&{urllib.parse.quote(e['label'], safe='')}={urllib.parse.quote(e['value'], safe='')}"
+                   for e in extra_list)
+
+
 def process_site_purchase(email, product_name, sub_name, quantity, player_input,
                           client_api_product_id='', client_price=None,
-                          user_ip='غير معروف', order_source="الموقع"):
+                          user_ip='غير معروف', order_source="الموقع", extra_params=None):
     if email not in USERS_DATA:
         return {"status": "error", "message": "المستخدم غير موجود!"}
 
@@ -17449,6 +17590,14 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
     ok, msg, quantity, price = sub_total_price(sub, quantity)
     if not ok:
         return {"status": "error", "message": msg}
+
+    ok, msg, extra_list = normalize_extra_params(sub, extra_params)
+    if not ok:
+        return {"status": "error", "message": msg}
+    # النص الظاهر بالطلب والإشعارات: الأول + باقي المتطلبات بأسمائها
+    player_input_raw = player_input
+    if extra_list:
+        player_input = ' | '.join([str(player_input_raw or '')] + [f"{e['label']}: {e['value']}" for e in extra_list])
 
     provider_name = sub.get('provider_name', '') or ''
     api_product_id = sub.get('api_product_id', '') or ''
@@ -17471,9 +17620,10 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
         provider = next((p for p in PROVIDERS_DATA if p.get('name') == provider_name), PROVIDERS_DATA[0])
         token = provider.get('token')
         base_url = provider.get('url', '').rstrip('/') + '/'
-        player_id_input = urllib.parse.quote(str(player_input or ''))
+        player_id_input = urllib.parse.quote(str(player_input_raw or ''))
         order_api_url = (f"{base_url}client/api/newOrder/{api_product_id}/params"
-                         f"?qty={quantity}&playerId={player_id_input}&order_uuid={order_uuid_val}")
+                         f"?qty={quantity}&playerId={player_id_input}&order_uuid={order_uuid_val}"
+                         f"{build_extra_query(extra_list)}")
         try:
             api_res = make_api_request(order_api_url, token)
             if api_res.get('status') == "OK":
@@ -17511,6 +17661,7 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
             "subcategory": sub_name,
             "price": price,
             "input": player_input,
+            "extra_params": extra_list,
             "provider_name": provider_name,
             "api_product_id": api_product_id,
             "status": order_status,
@@ -19239,6 +19390,35 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(MAINTENANCE_DATA, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path.split("?")[0] == "/robots.txt":
+            robots = (
+                "User-agent: *\n"
+                "Allow: /\n"
+                "Disallow: /admin\n"
+                "Disallow: /api/\n"
+                "Disallow: /client/\n\n"
+                f"Sitemap: {SITE_BASE_URL}/sitemap.xml\n"
+            )
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(robots.encode("utf-8"))
+
+        elif self.path.split("?")[0] == "/sitemap.xml":
+            today = datetime.now().strftime("%Y-%m-%d")
+            urls = [("/", "1.0", "daily"), ("/api-docs", "0.4", "monthly")]
+            xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+            for loc, prio, freq in urls:
+                xml += (f"  <url><loc>{SITE_BASE_URL}{loc}</loc><lastmod>{today}</lastmod>"
+                        f"<changefreq>{freq}</changefreq><priority>{prio}</priority></url>\n")
+            xml += "</urlset>\n"
+            self.send_response(200)
+            self.send_header("Content-type", "application/xml; charset=utf-8")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            self.wfile.write(xml.encode("utf-8"))
+
         elif self.path == "/manifest.json":
             pwa_name = APPEARANCE_DATA.get('pwa_name', 'SYRIA CARD ONE')
             pwa_short = APPEARANCE_DATA.get('pwa_short_name', 'SyriaCard')
@@ -19544,7 +19724,7 @@ self.addEventListener('fetch', event => {
                     "name": sub.get('name'),
                     "price": final_price,
                     "base_price": base_price,
-                    "params": ["ادخل الايدي"],
+                    "params": (sub.get('api_params') or ["ادخل الايدي"]),
                     "category_name": sub.get('product'),
                     "available": True,
                     "qty_values": None,
@@ -19638,6 +19818,9 @@ self.addEventListener('fetch', event => {
                 qty = int(params.get('qty', ['1'])[0])
                 player_id = params.get('playerId', [''])[0]
                 order_uuid_in = params.get('order_uuid', [''])[0]
+                # أي متطلبات إضافية غير الأساسية نمررها للمزود كما هي
+                extra_list = [{"label": k, "value": v[0]} for k, v in params.items()
+                              if k not in ('qty', 'playerId', 'order_uuid') and v and str(v[0]).strip()]
                 
                 if not order_uuid_in:
                     self.wfile.write(json.dumps({"status": "error", "code": 114, "message": "order_uuid is required"}).encode("utf-8"))
@@ -19704,7 +19887,7 @@ self.addEventListener('fetch', event => {
                             token = provider.get('token')
                             base_url = provider.get('url', '').rstrip('/') + '/'
                             player_enc = urllib.parse.quote(str(player_id))
-                            api_url = f"{base_url}client/api/newOrder/{api_product_id}/params?qty={qty}&playerId={player_enc}&order_uuid={order_uuid_in}"
+                            api_url = f"{base_url}client/api/newOrder/{api_product_id}/params?qty={qty}&playerId={player_enc}&order_uuid={order_uuid_in}{build_extra_query(extra_list)}"
                             api_res = make_api_request(api_url, token)
                             if api_res.get('status') == "OK":
                                 res_data = api_res.get('data', {})
@@ -19725,6 +19908,7 @@ self.addEventListener('fetch', event => {
                     "subcategory": sub.get('name'),
                     "price": total_price,
                     "input": player_id,
+                    "extra_params": extra_list,
                     "provider_name": provider_name,
                     "api_product_id": api_product_id,
                     "status": "مكتملة" if order_status == "accept" else ("مرفوضة" if order_status == "reject" else "قيد الانتظار"),
@@ -20877,6 +21061,7 @@ self.addEventListener('fetch', event => {
                 client_price=data.get('price'),
                 user_ip=user_ip,
                 order_source="الموقع",
+                extra_params=data.get('extra_params'),
             )
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
