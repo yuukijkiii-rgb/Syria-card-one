@@ -1214,6 +1214,15 @@ class ApiPriceMonitor:
                             subcat.pop('api_params', None)
                         desc_changed = True
 
+                    _qv = api_product.get('qty_values')
+                    _ql = [str(q) for q in _qv] if isinstance(_qv, list) and _qv else []
+                    if _ql != (subcat.get('api_qty_list') or []):
+                        if _ql:
+                            subcat['api_qty_list'] = _ql
+                        else:
+                            subcat.pop('api_qty_list', None)
+                        desc_changed = True
+
                     # إذا كان في تغيير (مقارنة نسبية دقيقة حتى مع الأسعار الصغيرة جداً)
                     price_diff = abs(new_price - old_price) > (1e-12 + 1e-9 * abs(old_price))
                     base_diff = abs(new_base - old_base) > (1e-12 + 1e-9 * abs(old_base))
@@ -1837,6 +1846,10 @@ class ApiTreeImport:
                     ex['api_params'] = param_labels
                 else:
                     ex.pop('api_params', None)
+                if isinstance(qty, list) and qty:
+                    ex['api_qty_list'] = [str(q) for q in qty]
+                else:
+                    ex.pop('api_qty_list', None)
                 if image and not ex.get('image'):
                     ex['image'] = image
                 if is_counter:
@@ -1865,6 +1878,8 @@ class ApiTreeImport:
                 }
                 if param_labels:
                     new_sub['api_params'] = param_labels
+                if isinstance(qty, list) and qty:
+                    new_sub['api_qty_list'] = [str(q) for q in qty]
                 if group_id:
                     new_sub['group_id'] = group_id
                 if is_counter:
@@ -3136,121 +3151,6 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .purchase-notice-text { font-size: 0.8rem; color: #b0aec4; line-height: 1.7; text-align: right; padding-right: 8px; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; min-width: 0; flex: 1; }
         #purchaseModal .modal-box { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
         #purchaseModal .purchase-notice-box { flex-shrink: 0; }
-
-        /* ===== نافذة الشراء الفخمة ===== */
-        #purchaseModal { align-items: center; }
-        #purchaseModal .pm-box {
-            position: relative; overflow-x: hidden; overflow-y: auto;
-            width: 92%; max-width: 400px; max-height: 92vh; padding: 20px 20px 22px; gap: 14px;
-            background: linear-gradient(165deg, #1b1738 0%, #0f0c22 55%, #0b0919 100%);
-            border: 1px solid rgba(218, 165, 32, 0.45); border-radius: 26px;
-            box-shadow: 0 25px 70px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.03) inset, 0 0 45px rgba(218,165,32,0.12);
-            transform: translateY(26px) scale(0.96); opacity: 0;
-            transition: transform 0.35s cubic-bezier(.2,.9,.3,1.2), opacity 0.25s ease;
-            scrollbar-width: thin; scrollbar-color: #daa520 transparent;
-        }
-        #purchaseModal.active .pm-box { transform: none; opacity: 1; }
-        #purchaseModal .pm-box::-webkit-scrollbar { width: 4px; }
-        #purchaseModal .pm-box::-webkit-scrollbar-thumb { background: #daa520; border-radius: 4px; }
-        #purchaseModal .pm-box > * { position: relative; z-index: 1; flex-shrink: 0; }
-        #purchaseModal .pm-glow {
-            position: absolute !important; z-index: 0 !important; top: -90px; left: 50%; transform: translateX(-50%);
-            width: 320px; height: 200px; pointer-events: none;
-            background: radial-gradient(ellipse at center, rgba(218,165,32,0.28) 0%, transparent 70%);
-        }
-        #purchaseModal .pm-close {
-            position: absolute; top: 14px; left: 14px; z-index: 5; width: 30px; height: 30px; border-radius: 50%;
-            display: flex; align-items: center; justify-content: center; cursor: pointer;
-            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #cfcbe6; transition: all .2s;
-        }
-        #purchaseModal .pm-close:active { transform: scale(.9); background: rgba(248,113,113,0.2); color: #f87171; }
-
-        #purchaseModal .pm-hero { display: flex; align-items: center; gap: 14px; padding: 6px 0 2px 38px; direction: rtl; }
-        #purchaseModal .pm-img {
-            width: 68px; height: 68px; border-radius: 18px; flex: 0 0 auto; padding: 2px;
-            background: linear-gradient(135deg, #f5d27a, #b8860b 55%, #f5d27a);
-            box-shadow: 0 8px 22px rgba(218,165,32,0.35);
-        }
-        #purchaseModal .pm-img img { width: 100%; height: 100%; object-fit: cover; border-radius: 16px; display: block; background: #15122b; }
-        #purchaseModal .pm-hero-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; align-items: flex-start; }
-        #purchaseModal .pm-kicker {
-            display: inline-flex; align-items: center; gap: 5px; font-size: 0.66rem; font-weight: 800; letter-spacing: .3px;
-            color: #f5d27a; background: rgba(218,165,32,0.12); border: 1px solid rgba(218,165,32,0.35);
-            padding: 3px 10px; border-radius: 20px;
-        }
-        #purchaseModal .purchase-title-box { font-size: 1.1rem; font-weight: 800; line-height: 1.45; color: #fff; word-break: break-word; }
-
-        #purchaseModal .pm-price-card {
-            display: flex; align-items: center; justify-content: space-between; direction: rtl;
-            padding: 12px 16px; border-radius: 18px;
-            background: linear-gradient(135deg, rgba(218,165,32,0.14), rgba(218,165,32,0.04));
-            border: 1px solid rgba(218,165,32,0.3);
-        }
-        #purchaseModal .pm-price-label { font-size: 0.8rem; font-weight: 700; color: #b9b4d6; }
-        #purchaseModal .purchase-price-badge { font-size: 1.15rem; padding: 8px 20px; }
-        #purchaseModal .pm-local {
-            text-align: center; font-size: 0.85rem; font-weight: 800; color: #fde68a;
-            background: linear-gradient(135deg, rgba(120,53,15,0.85), rgba(146,64,14,0.85));
-            padding: 9px 12px; border-radius: 14px; border: 1px solid rgba(245,158,11,0.7);
-        }
-
-        #purchaseModal .pm-fields { display: flex; flex-direction: column; gap: 10px; }
-        #purchaseModal .pm-section-title {
-            font-size: 0.72rem; font-weight: 800; color: #f5d27a; text-align: right; margin: 0 4px 6px;
-            display: flex; align-items: center; gap: 8px; direction: rtl;
-        }
-        #purchaseModal .pm-section-title::after { content: ""; flex: 1; height: 1px; background: linear-gradient(to left, rgba(218,165,32,0.5), transparent); }
-        #purchaseModal .pm-fields .pm-section-title { margin-bottom: 0; }
-        #purchaseModal .purchase-input-custom, #purchaseModal .counter-qty-box {
-            padding: 14px 16px; font-size: 0.92rem; border-radius: 16px; background: rgba(8,6,20,0.7);
-            border: 1px solid #2e2850; box-shadow: inset 0 2px 8px rgba(0,0,0,0.35);
-        }
-        #purchaseModal .purchase-input-custom:focus, #purchaseModal .counter-qty-box:focus {
-            border-color: #daa520; box-shadow: 0 0 0 3px rgba(218,165,32,0.18), inset 0 2px 8px rgba(0,0,0,0.35);
-        }
-        #purchaseModal .counter-total-box { margin-top: 10px; border-radius: 16px; padding: 12px 14px; }
-
-        #purchaseModal .purchase-buttons-grid { grid-template-columns: 1fr 1.7fr; gap: 10px; margin-top: 2px; }
-        #purchaseModal .buy-btn-gold {
-            position: relative; overflow: hidden; padding: 15px 12px; font-size: 1.05rem; border-radius: 18px;
-            background: linear-gradient(135deg, #f5d27a 0%, #daa520 45%, #b8860b 100%);
-            box-shadow: 0 8px 24px rgba(218,165,32,0.45), 0 1px 0 rgba(255,255,255,0.5) inset;
-        }
-        #purchaseModal .buy-btn-gold::after {
-            content: ""; position: absolute; top: 0; left: -80%; width: 50%; height: 100%;
-            background: linear-gradient(100deg, transparent, rgba(255,255,255,0.55), transparent);
-            transform: skewX(-20deg); animation: pmShine 3.2s ease-in-out infinite;
-        }
-        @keyframes pmShine { 0%, 55% { left: -80%; } 100% { left: 140%; } }
-        #purchaseModal .buy-btn-gold:disabled { opacity: .6; cursor: not-allowed; }
-        #purchaseModal .buy-btn-gold:disabled::after { animation: none; }
-        #purchaseModal .cancel-btn-outline {
-            padding: 15px 10px; border-radius: 18px; font-size: 0.95rem;
-            background: rgba(248,113,113,0.06); border: 1px solid rgba(248,113,113,0.45);
-        }
-
-        #purchaseModal .purchase-notice-box {
-            display: flex; flex-direction: column; align-items: stretch; gap: 8px; direction: rtl;
-            padding: 14px 16px; border-radius: 18px; background: rgba(8,6,20,0.55);
-            border: 1px solid rgba(218,165,32,0.22); border-right: 3px solid #daa520;
-        }
-        #purchaseModal .pm-desc-head { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; font-weight: 800; color: #f5d27a; }
-        #purchaseModal .purchase-notice-text { padding: 0; font-size: 0.84rem; line-height: 1.85; color: #cfcbe6; }
-
-        @media (max-width: 520px) {
-            #purchaseModal { align-items: flex-end; }
-            #purchaseModal .pm-box {
-                width: 100%; max-width: 100%; max-height: 94vh; border-radius: 28px 28px 0 0;
-                border-bottom: none; padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
-                transform: translateY(100%); opacity: 1;
-            }
-            #purchaseModal.active .pm-box { transform: none; }
-            #purchaseModal .pm-box::before {
-                content: ""; display: block; width: 44px; height: 4px; border-radius: 4px;
-                background: rgba(255,255,255,0.22); margin: -8px auto 0; flex-shrink: 0;
-            }
-        }
-
 
         .dep-desc-box { background-color: var(--input-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; font-size: 0.78rem; color: var(--subtext-color); line-height: 1.4; }
         .dep-code-box {
@@ -4533,39 +4433,22 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         </div>
     </div>
 
-    <div class="modal-overlay" id="purchaseModal" onclick="if(event.target===this)closePurchaseModal()">
-        <div class="modal-box pm-box">
-            <div class="pm-glow"></div>
-            <button type="button" class="pm-close" onclick="closePurchaseModal()" aria-label="إغلاق">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-            </button>
-
-            <div class="pm-hero">
-                <div class="pm-img" id="pModalImageWrap" style="display:none;"><img id="pModalImage" alt="" /></div>
-                <div class="pm-hero-text">
-                    <span class="pm-kicker">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.9L22 10l-5.4 4.7L18.2 22 12 18.3 5.8 22l1.6-7.3L2 10l7.1-1.1z"/></svg>
-                        تأكيد الشراء
-                    </span>
-                    <div class="purchase-title-box"><span id="pModalTitle">عنوان الفئة</span></div>
+    <div class="modal-overlay" id="purchaseModal">
+        <div class="modal-box">
+            <div class="purchase-top-row">
+                <div class="purchase-price-badge" id="pModalPrice">0 $</div>
+                <div class="purchase-title-box">
+                    <span id="pModalTitle">عنوان الفئة</span>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 8.5 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                 </div>
             </div>
 
-            <div class="pm-price-card">
-                <span class="pm-price-label">السعر</span>
-                <div class="purchase-price-badge" id="pModalPrice">0 $</div>
-            </div>
+            <div id="pModalLocalPrice" style="display:none; text-align:center; font-size:0.85rem; font-weight:800; color:#f59e0b; background:linear-gradient(135deg,#78350f 0%,#92400e 100%); padding:8px 12px; border-radius:10px; border:1px solid #f59e0b;"></div>
 
-            <div id="pModalLocalPrice" class="pm-local" style="display:none;"></div>
-
-            <div class="pm-fields">
-                <div class="pm-section-title">البيانات المطلوبة</div>
-                <input type="text" id="pModalRequirement" class="purchase-input-custom" placeholder="ايدي المستخدم" />
-                <div id="pModalExtraFields" style="display:flex; flex-direction:column; gap:10px;"></div>
-            </div>
+            <input type="text" id="pModalRequirement" class="purchase-input-custom" placeholder="ايدي المستخدم" />
+            <div id="pModalExtraFields" style="display:flex; flex-direction:column; gap:10px;"></div>
 
             <div id="pModalCounterBox" style="display:none;">
-                <div class="pm-section-title">الكمية</div>
                 <input type="number" id="pModalQuantity" class="counter-qty-box" placeholder="أدخل الكمية" min="1" oninput="calculateCounterTotal()" />
                 <div class="counter-total-box" id="pModalTotalBox">
                     <span class="counter-total-label">السعر الإجمالي:</span>
@@ -4579,10 +4462,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             </div>
 
             <div class="purchase-notice-box" id="pModalDescriptionBox" style="display:none;">
-                <div class="pm-desc-head">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v5h1"/></svg>
-                    تفاصيل الفئة
-                </div>
+                <div class="purchase-notice-line"></div>
                 <div class="purchase-notice-text" id="pModalDescriptionText"></div>
             </div>
         </div>
@@ -7184,20 +7064,6 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             isCounterCategory = subcat.is_counter === true;
             
             document.getElementById('pModalTitle').innerText = subcat.name;
-            (function () {
-                const w = document.getElementById('pModalImageWrap');
-                const im = document.getElementById('pModalImage');
-                const src = String(subcat.image || '').trim();
-                if (src) {
-                    im.onerror = function () { w.style.display = 'none'; };
-                    im.onload = function () { w.style.display = ''; };
-                    im.src = src;
-                    w.style.display = '';
-                } else {
-                    w.style.display = 'none';
-                    im.removeAttribute('src');
-                }
-            })();
             
             let displayPrice = subcat.price;
             if (isCounterCategory) {
@@ -7262,7 +7128,22 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
             const descEl = document.getElementById('pModalDescriptionText');
             const descBox = document.getElementById('pModalDescriptionBox');
-            const descTxt = String(subcat.description || '').trim();
+            let descTxt = String(subcat.description || '').trim();
+            if (!descTxt) {
+                // ما في وصف → نعرض متطلبات الخدمة حسب الـ API (المطلوب + الكمية)
+                const NL = String.fromCharCode(10);
+                const reqLines = [];
+                const lbls = Array.isArray(subcat.api_params) ? subcat.api_params.filter(Boolean) : [];
+                if (lbls.length) reqLines.push('المطلوب: ' + lbls.join(' - '));
+                const ql = Array.isArray(subcat.api_qty_list) ? subcat.api_qty_list.filter(Boolean) : [];
+                if (ql.length) {
+                    reqLines.push('الكميات المتاحة: ' + ql.join(' ، '));
+                } else if (subcat.is_counter === true) {
+                    const mn = subcat.counter_min_qty || 1, mx = subcat.counter_max_qty;
+                    reqLines.push(mx ? ('الكمية: من ' + mn + ' إلى ' + mx) : ('الكمية: الحد الأدنى ' + mn));
+                }
+                descTxt = reqLines.join(NL);
+            }
             descEl.innerText = descTxt;
             descBox.style.display = descTxt ? '' : 'none';
 
@@ -7945,6 +7826,77 @@ ADMIN_HTML_CONTENT = """
         .api-copyable-id { color: #38bdf8; font-weight: 700; cursor: pointer; background-color: rgba(56, 189, 248, 0.1); padding: 2px 6px; border-radius: 4px; border: 1px dashed #38bdf8; }
         #apiProductPreviewBox { display: none; background-color: #000; border: 1px solid #38bdf8; border-radius: 6px; padding: 8px 10px; font-size: 0.75rem; color: #38bdf8; font-weight: 700; text-align: center; }
         #checkDepositsPage, #checkOrdersPage, #viewProvidersPage, #deleteCategoryPage, #deleteProductPage { display: none; flex-direction: column; gap: 12px; width: 100%; }
+
+        /* ===== صفحات التشييك (طلبات / إيداعات) ===== */
+        .ck-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #27272a; }
+        .ck-head-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .ck-ico { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(56,189,248,.12); border: 1px solid rgba(56,189,248,.35); color: #38bdf8; flex: 0 0 auto; }
+        .ck-head-title b { display: block; font-size: .98rem; font-weight: 800; color: #fff; }
+        .ck-head-title small { display: block; font-size: .68rem; color: #a1a1aa; margin-top: 2px; }
+        .ck-head-actions { display: flex; gap: 8px; align-items: center; }
+        .ck-icon-btn { width: 36px; height: 36px; border-radius: 10px; background: #121212; border: 1px solid #27272a; color: #38bdf8; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .ck-icon-btn.spin svg { animation: ckSpin .8s linear infinite; }
+        @keyframes ckSpin { to { transform: rotate(360deg); } }
+        .ck-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .ck-tile { background: #121212; border: 1px solid #27272a; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; border-right: 3px solid var(--tc, #38bdf8); }
+        .ck-tile b { font-size: 1.05rem; font-weight: 800; color: var(--tc, #fff); direction: ltr; text-align: right; }
+        .ck-tile span { font-size: .68rem; color: #a1a1aa; font-weight: 600; }
+        .ck-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .ck-search { flex: 1; min-width: 170px; padding: 10px 12px; background: #000; border: 1px solid #27272a; border-radius: 10px; color: #fff; font-size: .8rem; outline: none; text-align: right; }
+        .ck-search:focus { border-color: #38bdf8; }
+        .ck-select { padding: 10px 8px; background: #000; border: 1px solid #27272a; border-radius: 10px; color: #fff; font-size: .75rem; outline: none; }
+        .ck-auto { display: flex; align-items: center; gap: 6px; font-size: .72rem; color: #a1a1aa; cursor: pointer; white-space: nowrap; }
+        .ck-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+        .ck-chips::-webkit-scrollbar { display: none; }
+        .ck-chip { white-space: nowrap; padding: 7px 12px; border-radius: 20px; background: #121212; border: 1px solid #27272a; color: #a1a1aa; font-size: .74rem; font-weight: 700; cursor: pointer; display: flex; gap: 6px; align-items: center; }
+        .ck-chip b { background: rgba(255,255,255,.08); padding: 1px 7px; border-radius: 10px; font-size: .68rem; color: #fff; }
+        .ck-chip.active { background: rgba(56,189,248,.14); border-color: #38bdf8; color: #38bdf8; }
+        .ck-list { display: flex; flex-direction: column; gap: 10px; }
+        .ck-card { position: relative; background: #121212; border: 1px solid #27272a; border-radius: 14px; padding: 12px 16px 12px 12px; display: flex; flex-direction: column; gap: 9px; overflow: hidden; transition: border-color .2s; }
+        .ck-card:hover { border-color: rgba(56,189,248,.5); }
+        .ck-card::before { content: ""; position: absolute; right: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--kc, #52525b); }
+        .ck-card.k-wait, .ck-card.k-pending { --kc: #fbbf24; }
+        .ck-card.k-check { --kc: #f87171; }
+        .ck-card.k-done, .ck-card.k-accepted { --kc: #4ade80; }
+        .ck-card.k-rejected { --kc: #71717a; }
+        .ck-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .ck-badge { font-size: .68rem; font-weight: 800; padding: 3px 10px; border-radius: 20px; color: var(--kc); background: rgba(255,255,255,.05); border: 1px solid var(--kc); }
+        .ck-pill { font-size: .64rem; font-weight: 700; padding: 3px 8px; border-radius: 20px; color: #38bdf8; background: rgba(56,189,248,.1); border: 1px solid rgba(56,189,248,.3); }
+        .ck-pill.warn { color: #f87171; background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.45); }
+        .ck-id { margin-right: auto; font-size: .72rem; font-weight: 800; color: #a1a1aa; direction: ltr; cursor: pointer; }
+        .ck-title { font-size: .95rem; font-weight: 800; color: #fff; line-height: 1.5; word-break: break-word; }
+        .ck-sub { font-size: .72rem; color: #a1a1aa; margin-top: -6px; }
+        .ck-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .ck-kv { background: #000; border: 1px solid #1f1f23; border-radius: 10px; padding: 7px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ck-kv.wide { grid-column: 1 / -1; }
+        .ck-kv span { font-size: .62rem; color: #71717a; font-weight: 700; }
+        .ck-kv b { font-size: .78rem; color: #e4e4e7; font-weight: 700; word-break: break-all; }
+        .ck-kv b.ck-copy { cursor: pointer; color: #38bdf8; }
+        .ck-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .ck-price { font-size: 1.1rem; font-weight: 800; color: #4ade80; direction: ltr; }
+        .ck-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .ck-btn { padding: 8px 14px; border-radius: 10px; font-size: .76rem; font-weight: 800; cursor: pointer; border: 1px solid #27272a; background: #18181b; color: #e4e4e7; }
+        .ck-btn.ok { background: linear-gradient(135deg, #34d399, #059669); border-color: transparent; color: #fff; }
+        .ck-btn.no { background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.5); color: #f87171; }
+        .ck-btn:active { transform: scale(.96); }
+        .ck-thumb { width: 100%; max-height: 130px; object-fit: cover; border-radius: 10px; border: 1px solid #27272a; cursor: zoom-in; }
+        .ck-empty { text-align: center; color: #a1a1aa; font-size: .8rem; padding: 28px 10px; border: 1px dashed #27272a; border-radius: 14px; }
+        .ck-more { text-align: center; padding: 10px; border-radius: 12px; border: 1px dashed #38bdf8; color: #38bdf8; font-weight: 800; font-size: .8rem; cursor: pointer; }
+        .ck-skel { height: 118px; border-radius: 14px; background: linear-gradient(90deg, #121212 25%, #1c1c20 50%, #121212 75%); background-size: 200% 100%; animation: ckSkel 1.2s linear infinite; border: 1px solid #1f1f23; }
+        @keyframes ckSkel { to { background-position: -200% 0; } }
+        #ckToastBox { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 10050; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+        .ck-toast { background: #052e1c; border: 1px solid #10b981; color: #d1fae5; padding: 9px 18px; border-radius: 12px; font-size: .78rem; font-weight: 700; box-shadow: 0 10px 30px rgba(0,0,0,.5); transition: opacity .3s, transform .3s; }
+        .ck-toast.err { background: #3b0d0d; border-color: #f87171; color: #fecaca; }
+        .ck-toast.out { opacity: 0; transform: translateY(8px); }
+        #ckLightbox { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 10040; display: none; align-items: center; justify-content: center; padding: 16px; cursor: zoom-out; }
+        #ckLightbox.active { display: flex; }
+        #ckLightbox img { max-width: 100%; max-height: 100%; border-radius: 12px; }
+        body.light-mode-admin .ck-card, body.light-mode-admin .ck-tile, body.light-mode-admin .ck-chip, body.light-mode-admin .ck-icon-btn { background: #ffffff; border-color: #e4e4e7; }
+        body.light-mode-admin .ck-kv, body.light-mode-admin .ck-search, body.light-mode-admin .ck-select { background: #f4f4f5; border-color: #e4e4e7; color: #09090b; }
+        body.light-mode-admin .ck-head-title b, body.light-mode-admin .ck-title, body.light-mode-admin .ck-kv b, body.light-mode-admin .ck-chip b { color: #09090b; }
+        body.light-mode-admin .ck-btn { background: #f4f4f5; border-color: #e4e4e7; color: #09090b; }
+        body.light-mode-admin .ck-btn.ok { color: #fff; }
+        body.light-mode-admin .ck-btn.no { color: #dc2626; }
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; padding: 10px 5px; }
         .category-card { background-color: #121212; border: 1px solid #27272a; border-radius: 10px; aspect-ratio: 1 / 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 5px; overflow: hidden; position: relative; transform: scale(1.1); transform-origin: center; }
         body.light-mode-admin .category-card { background-color: #ffffff; border-color: #e4e4e7; }
@@ -10760,16 +10712,43 @@ ADMIN_HTML_CONTENT = """
         </div>
 
         <div id="checkOrdersPage">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #27272a; padding-bottom:8px; margin-bottom:5px;">
-                <span style="font-size:0.95rem; font-weight:800; color:#38bdf8;">طلبات الشراء قيد الانتظار</span>
-                <button class="btn-secondary" onclick="closeCheckOrdersPage()">رجوع</button>
+            <div class="ck-head">
+                <div class="ck-head-title">
+                    <div class="ck-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
+                    <div><b>تشييك الطلبات</b><small id="ckOrdersSub">جاري التحميل...</small></div>
+                </div>
+                <div class="ck-head-actions">
+                    <button class="ck-icon-btn" id="ckOrdersRefreshBtn" onclick="ckOrdersLoad()" title="تحديث"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
+                    <button class="btn-secondary" onclick="closeCheckOrdersPage()">رجوع</button>
+                </div>
             </div>
-            <div id="productOrdersList" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="ck-stats" id="ckOrdersStats"></div>
+            <div class="ck-toolbar">
+                <input type="text" class="ck-search" id="ckOrdersSearch" placeholder="بحث: إيميل، رقم الطلب، فئة، مدخلات..." oninput="ckOrdersLimit = 40; ckOrdersRender()">
+                <select class="ck-select" id="ckOrdersSort" onchange="ckOrdersRender()">
+                    <option value="new">الأحدث أولاً</option>
+                    <option value="old">الأقدم أولاً</option>
+                    <option value="high">الأعلى سعراً</option>
+                </select>
+            </div>
+            <div class="ck-chips" id="ckOrdersChips">
+                <button class="ck-chip active" data-f="open" onclick="ckOrdersSetFilter('open')">المعلّقة <b>0</b></button>
+                <button class="ck-chip" data-f="wait" onclick="ckOrdersSetFilter('wait')">قيد الانتظار <b>0</b></button>
+                <button class="ck-chip" data-f="check" onclick="ckOrdersSetFilter('check')">للتشيك <b>0</b></button>
+                <button class="ck-chip" data-f="done" onclick="ckOrdersSetFilter('done')">مكتملة <b>0</b></button>
+                <button class="ck-chip" data-f="rejected" onclick="ckOrdersSetFilter('rejected')">مرفوضة <b>0</b></button>
+                <button class="ck-chip" data-f="all" onclick="ckOrdersSetFilter('all')">الكل <b>0</b></button>
+            </div>
+            <div id="productOrdersList" class="ck-list"></div>
         </div>
 
         <div class="modal-overlay" id="reviewOrderModal">
             <div class="modal-box">
                 <div class="modal-title">تفاصيل طلب الشراء</div>
+                <div class="form-group">
+                    <label>رقم الطلب / الحالة / الوقت:</label>
+                    <div class="admin-field-box" id="revOrdMeta">-</div>
+                </div>
                 <div class="form-group">
                     <label>1. اسم المنتج:</label>
                     <div class="admin-field-box" id="revOrdProduct">-</div>
@@ -10803,16 +10782,43 @@ ADMIN_HTML_CONTENT = """
         </div>
 
         <div id="checkDepositsPage">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #27272a; padding-bottom:8px; margin-bottom:5px;">
-                <span style="font-size:0.95rem; font-weight:800; color:#38bdf8;">طلبات الإيداع المقدمة</span>
-                <button class="btn-secondary" onclick="closeCheckDepositsPage()">رجوع</button>
+            <div class="ck-head">
+                <div class="ck-head-title">
+                    <div class="ck-ico"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M2 10h20"/><path d="M6 15h4"/></svg></div>
+                    <div><b>تشييك الإيداعات</b><small id="ckDepSub">جاري التحميل...</small></div>
+                </div>
+                <div class="ck-head-actions">
+                    <button class="ck-icon-btn" id="ckDepRefreshBtn" onclick="ckDepLoad(false)" title="تحديث"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></button>
+                    <button class="btn-secondary" onclick="closeCheckDepositsPage()">رجوع</button>
+                </div>
             </div>
-            <div id="depositRequestsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+            <div class="ck-stats" id="ckDepStats"></div>
+            <div class="ck-toolbar">
+                <input type="text" class="ck-search" id="ckDepSearch" placeholder="بحث: إيميل، رقم عملية، طريقة، مبلغ..." oninput="ckDepLimit = 40; ckDepRender()">
+                <select class="ck-select" id="ckDepSort" onchange="ckDepRender()">
+                    <option value="new">الأحدث أولاً</option>
+                    <option value="old">الأقدم أولاً</option>
+                    <option value="high">الأعلى مبلغاً</option>
+                </select>
+                <label class="ck-auto"><input type="checkbox" id="ckDepAuto" checked> تحديث تلقائي</label>
+            </div>
+            <div class="ck-chips" id="ckDepChips">
+                <button class="ck-chip active" data-f="pending" onclick="ckDepSetFilter('pending')">قيد التدقيق <b>0</b></button>
+                <button class="ck-chip" data-f="accepted" onclick="ckDepSetFilter('accepted')">مقبولة <b>0</b></button>
+                <button class="ck-chip" data-f="rejected" onclick="ckDepSetFilter('rejected')">مرفوضة <b>0</b></button>
+                <button class="ck-chip" data-f="all" onclick="ckDepSetFilter('all')">الكل <b>0</b></button>
+            </div>
+            <div id="depositRequestsList" class="ck-list"></div>
+            <div id="ckLightbox" onclick="this.classList.remove('active')"><img id="ckLightboxImg" alt=""></div>
         </div>
 
         <div class="modal-overlay" id="reviewDepositModal">
             <div class="modal-box">
                 <div class="modal-title">تفاصيل طلب الإيداع</div>
+                <div class="form-group">
+                    <label>الطريقة / الحالة / الوقت:</label>
+                    <div class="admin-field-box" id="revDepMeta">-</div>
+                </div>
                 <div class="form-group">
                     <label>1. المبلغ المحول:</label>
                     <div class="admin-field-box" id="revAmount" style="color:#4ade80; font-size:0.9rem; font-weight:800;">-</div>
@@ -14795,7 +14801,72 @@ ADMIN_HTML_CONTENT = """
         }
 
         let productOrdersData = [];
+        let ckOrdersFilter = 'open';
+        let ckOrdersLimit = 40;
+        let ckBusy = false;
 
+        // ---------- أدوات مشتركة لصفحات التشييك ----------
+        function ckEsc(v) {
+            return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+        function ckToast(msg, type) {
+            let box = document.getElementById('ckToastBox');
+            if (!box) { box = document.createElement('div'); box.id = 'ckToastBox'; document.body.appendChild(box); }
+            const t = document.createElement('div');
+            t.className = 'ck-toast' + (type === 'err' ? ' err' : '');
+            t.textContent = msg;
+            box.appendChild(t);
+            setTimeout(function () { t.classList.add('out'); setTimeout(function () { t.remove(); }, 320); }, 2600);
+        }
+        function ckCopyFallback(txt, done) {
+            const ta = document.createElement('textarea');
+            ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); } catch (e) { }
+            ta.remove(); done();
+        }
+        function ckCopy(txt) {
+            txt = String(txt == null ? '' : txt);
+            if (!txt) return;
+            const done = function () { ckToast('تم النسخ: ' + (txt.length > 28 ? txt.slice(0, 28) + '...' : txt)); };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(done).catch(function () { ckCopyFallback(txt, done); });
+            } else { ckCopyFallback(txt, done); }
+        }
+        function ckParseDate(d, t) {
+            if (!d) return 0;
+            const ds = String(d).trim().split(' ');
+            const dp = ds[0].split('-');
+            if (dp.length < 3) return 0;
+            const tp = String(ds[1] || t || '00:00:00').split(':');
+            const v = new Date(+dp[0], +dp[1] - 1, +dp[2], +(tp[0] || 0), +(tp[1] || 0), +(tp[2] || 0)).getTime();
+            return v || 0;
+        }
+        function ckSkeleton() { return '<div class="ck-skel"></div><div class="ck-skel"></div><div class="ck-skel"></div>'; }
+        function ckSpin(id, on) { const b = document.getElementById(id); if (b) b.classList.toggle('spin', !!on); }
+        function ckTile(val, label, color) {
+            return '<div class="ck-tile" style="--tc:' + color + ';"><b>' + val + '</b><span>' + label + '</span></div>';
+        }
+        function ckKv(label, valHtml, wide) {
+            return '<div class="ck-kv' + (wide ? ' wide' : '') + '"><span>' + label + '</span>' + valHtml + '</div>';
+        }
+        function ckCopyB(text) {
+            return '<b class="ck-copy" data-c="' + ckEsc(text) + '" onclick="ckCopy(this.getAttribute(' + "'data-c'" + '))">' + ckEsc(text) + '</b>';
+        }
+        function ckInspect(email) {
+            if (!email) return;
+            document.getElementById('inspectUserIdentifier').value = email;
+            executeClientInspection();
+        }
+        function ckLightbox(src) {
+            if (!src) return;
+            document.getElementById('ckLightboxImg').src = src;
+            document.getElementById('ckLightbox').classList.add('active');
+        }
+
+        // ---------- تشييك الطلبات ----------
         function openCheckOrdersPage() {
             toggleSidebar();
             document.getElementById('adminMainSection').style.display = 'none';
@@ -14806,13 +14877,9 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('apiImportScreen').classList.remove('active');
             document.getElementById('clientsListScreen').classList.remove('active');
             document.getElementById('checkOrdersPage').style.display = 'flex';
-
-            fetch('/api/get_all_orders')
-                .then(r => r.json())
-                .then(orders => {
-                    productOrdersData = orders;
-                    renderProductOrdersList();
-                });
+            ckOrdersFilter = 'open'; ckOrdersLimit = 40;
+            document.getElementById('ckOrdersSearch').value = '';
+            ckOrdersLoad();
         }
 
         function closeCheckOrdersPage() {
@@ -14821,58 +14888,173 @@ ADMIN_HTML_CONTENT = """
             fetchStatsAndRender();
         }
 
-        function renderProductOrdersList() {
-            const container = document.getElementById('productOrdersList');
-            container.innerHTML = '';
-            const pending = productOrdersData.filter(o => o.status === 'قيد الانتظار' || o.status === 'تم الارسال للتشيك');
+        function ckOrdersLoad() {
+            const box = document.getElementById('productOrdersList');
+            box.innerHTML = ckSkeleton();
+            ckSpin('ckOrdersRefreshBtn', true);
+            return fetch('/api/get_all_orders')
+                .then(function (r) { return r.json(); })
+                .then(function (orders) {
+                    productOrdersData = Array.isArray(orders) ? orders : [];
+                    ckOrdersRender();
+                })
+                .catch(function () { box.innerHTML = '<div class="ck-empty">تعذر تحميل الطلبات، جرّب التحديث</div>'; })
+                .then(function () { ckSpin('ckOrdersRefreshBtn', false); });
+        }
 
-            if (pending.length === 0) {
-                container.innerHTML = `<div style="text-align:center; color:#a1a1aa; font-size:0.8rem; padding:20px;">لا توجد طلبات شراء قيد الانتظار أو للتشيك حالياً</div>`;
+        function ckOrderKind(st) {
+            st = String(st || '');
+            if (st === 'تم الارسال للتشيك') return 'check';
+            if (st.indexOf('مرفوض') > -1) return 'rejected';
+            if (st.indexOf('مكتمل') > -1) return 'done';
+            return 'wait';
+        }
+        const CK_ORDER_KIND = {
+            wait: 'قيد الانتظار', check: 'للتشيك (فشل API)', done: 'مكتمل', rejected: 'مرفوض'
+        };
+
+        function ckOrdersSetFilter(f) {
+            ckOrdersFilter = f; ckOrdersLimit = 40; ckOrdersRender();
+        }
+
+        function ckOrdersRender() {
+            const all = productOrdersData.map(function (o) { return { o: o, k: ckOrderKind(o.status) }; });
+            const cnt = { wait: 0, check: 0, done: 0, rejected: 0 };
+            let pendingSum = 0;
+            all.forEach(function (x) {
+                cnt[x.k]++;
+                if (x.k === 'wait' || x.k === 'check') pendingSum += parseFloat(x.o.price) || 0;
+            });
+            const open = cnt.wait + cnt.check;
+
+            document.querySelectorAll('#ckOrdersChips .ck-chip').forEach(function (ch) {
+                const f = ch.getAttribute('data-f');
+                const n = f === 'open' ? open : (f === 'all' ? all.length : cnt[f]);
+                ch.querySelector('b').textContent = n;
+                ch.classList.toggle('active', f === ckOrdersFilter);
+            });
+            document.getElementById('ckOrdersSub').textContent = open ? ('يوجد ' + open + ' طلب بانتظار قرارك') : 'ما في طلبات معلّقة حالياً';
+            document.getElementById('ckOrdersStats').innerHTML =
+                ckTile(open, 'طلبات معلّقة', '#fbbf24') +
+                ckTile(formatBalance(pendingSum) + ' $', 'قيمة المعلّق', '#4ade80') +
+                ckTile(cnt.check, 'للتشيك (فشل API)', '#f87171') +
+                ckTile(all.length, 'إجمالي الطلبات', '#38bdf8');
+
+            let list = all.filter(function (x) {
+                if (ckOrdersFilter === 'open') return x.k === 'wait' || x.k === 'check';
+                if (ckOrdersFilter === 'all') return true;
+                return x.k === ckOrdersFilter;
+            });
+            const q = document.getElementById('ckOrdersSearch').value.trim().toLowerCase();
+            if (q) {
+                list = list.filter(function (x) {
+                    const o = x.o;
+                    return [o.id, o.email, o.product, o.subcategory, o.input, o.status, o.order_source, o.provider_name, o.order_uuid]
+                        .join(' ').toLowerCase().indexOf(q) > -1;
+                });
+            }
+            const sort = document.getElementById('ckOrdersSort').value;
+            list.sort(function (a, b) {
+                if (sort === 'high') return (parseFloat(b.o.price) || 0) - (parseFloat(a.o.price) || 0);
+                const da = ckParseDate(a.o.date, a.o.time), db = ckParseDate(b.o.date, b.o.time);
+                const d = (db - da) || ((b.o.id || 0) - (a.o.id || 0));
+                return sort === 'old' ? -d : d;
+            });
+
+            const box = document.getElementById('productOrdersList');
+            if (!list.length) {
+                box.innerHTML = '<div class="ck-empty">' + (q ? 'ما في نتائج لهذا البحث' : (ckOrdersFilter === 'open' ? 'لا توجد طلبات شراء معلّقة حالياً' : 'لا توجد طلبات ضمن هذا التصنيف')) + '</div>';
                 return;
             }
+            let html = list.slice(0, ckOrdersLimit).map(ckOrderCardHtml).join('');
+            if (list.length > ckOrdersLimit) {
+                html += '<div class="ck-more" onclick="ckOrdersLimit += 40; ckOrdersRender()">عرض المزيد (' + (list.length - ckOrdersLimit) + ' متبقي)</div>';
+            }
+            box.innerHTML = html;
+        }
 
-            pending.forEach(o => {
-                const card = document.createElement('div');
-                card.className = 'request-card-item';
-                card.onclick = () => openReviewOrderModal(o);
-                let badgeCol = (o.status === 'تم الارسال للتشيك') ? '#f87171' : '#4ade80';
-                card.innerHTML = `
-                    <div class="card-val-right">${o.subcategory} <span style="font-size:0.65rem; color:${badgeCol};">(${o.status})</span></div>
-                    <div class="card-title-left">${formatBalance(o.price)} $</div>
-                `;
-                container.appendChild(card);
-            });
+        function ckOrderCardHtml(x) {
+            const o = x.o;
+            const isOpen = x.k === 'wait' || x.k === 'check';
+            const when = (o.date || '') + (o.time ? ' ' + String(o.time).slice(0, 5) : '');
+            let h = '<div class="ck-card k-' + x.k + '">';
+            h += '<div class="ck-top"><span class="ck-badge">' + CK_ORDER_KIND[x.k] + '</span>';
+            if (o.provider_name) h += '<span class="ck-pill">API: ' + ckEsc(o.provider_name) + '</span>';
+            if (o.is_counter) h += '<span class="ck-pill">عدّاد</span>';
+            h += '<span class="ck-id" onclick="ckCopy(' + o.id + ')">#' + ckEsc(o.id) + '</span></div>';
+            h += '<div class="ck-title">' + ckEsc(o.subcategory || 'بدون فئة') + '</div>';
+            h += '<div class="ck-sub">' + ckEsc(o.product || '') + '</div>';
+            h += '<div class="ck-meta">';
+            h += ckKv('العميل', ckCopyB(o.email || '-'), true);
+            h += ckKv('المدخلات', ckCopyB(o.input || '-'), true);
+            h += ckKv('الكمية', '<b>' + ckEsc(o.quantity || 1) + '</b>');
+            h += ckKv('المصدر', '<b>' + ckEsc(o.order_source || 'الموقع') + '</b>');
+            h += ckKv('الوقت', '<b style="direction:ltr; text-align:right; display:block;">' + ckEsc(when || '-') + '</b>', true);
+            h += '</div>';
+            h += '<div class="ck-foot"><div class="ck-price">' + formatBalance(o.price) + ' $</div><div class="ck-actions">';
+            h += '<button class="ck-btn" onclick="ckInspect(' + "'" + ckEsc(o.email) + "'" + ')">كشف العميل</button>';
+            h += '<button class="ck-btn" onclick="ckOrderAct(' + o.id + ',' + "'view'" + ')">تفاصيل</button>';
+            if (isOpen) {
+                h += '<button class="ck-btn no" onclick="ckOrderAct(' + o.id + ',' + "'reject'" + ')">رفض</button>';
+                h += '<button class="ck-btn ok" onclick="ckOrderAct(' + o.id + ',' + "'accept'" + ')">قبول</button>';
+            }
+            h += '</div></div></div>';
+            return h;
+        }
+
+        function ckOrderAct(id, act) {
+            const o = productOrdersData.find(function (x) { return x.id === id; });
+            if (!o) return;
+            if (act === 'view') { openReviewOrderModal(o); return; }
+            ckOrderDecide(o, act);
+        }
+
+        async function ckOrderDecide(o, action) {
+            if (ckBusy) return;
+            const msg = action === 'accept'
+                ? 'تأكيد قبول الطلب #' + o.id + ' (' + (o.subcategory || '') + ')؟'
+                : 'تأكيد رفض الطلب #' + o.id + ' وإعادة ' + formatBalance(o.price) + ' $ لحساب العميل؟';
+            if (!confirm(msg)) return;
+            ckBusy = true;
+            try {
+                const res = await fetch('/api/process_product_order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: o.id, action: action })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    ckToast(action === 'accept' ? 'تم قبول الطلب #' + o.id : 'تم رفض الطلب #' + o.id + ' وإعادة المبلغ');
+                    closeModal('reviewOrderModal');
+                    await ckOrdersLoad();
+                    fetchStatsAndRender();
+                } else {
+                    ckToast(data.message || 'حدث خطأ في معالجة العملية!', 'err');
+                }
+            } catch (e) { ckToast('تعذر الاتصال بالسيرفر', 'err'); }
+            ckBusy = false;
         }
 
         let activeReviewOrder = null;
 
         function openReviewOrderModal(order) {
             activeReviewOrder = order;
+            const k = ckOrderKind(order.status);
+            document.getElementById('revOrdMeta').innerText = '#' + order.id + '  |  ' + CK_ORDER_KIND[k] + '  |  ' + (order.date || '') + ' ' + (order.time || '');
             document.getElementById('revOrdProduct').innerText = order.product || 'غير معروف';
             document.getElementById('revOrdSubcatPrice').innerText = order.subcategory + " (" + formatBalance(order.price) + " $)";
             document.getElementById('revOrdEmail').innerText = order.email || 'غير معروف';
             document.getElementById('revOrdInput').innerText = order.input || 'لا يوجد';
             document.getElementById('revOrdQuantity').innerText = order.quantity || '1';
             document.getElementById('revOrdSource').innerText = order.order_source || 'الموقع';
+            const row = document.querySelector('#reviewOrderModal .action-btns-row');
+            if (row) row.style.display = (k === 'wait' || k === 'check') ? '' : 'none';
             openModal('reviewOrderModal');
         }
 
-        async function processOrderDecision(action) {
+        function processOrderDecision(action) {
             if (!activeReviewOrder) return;
-            const res = await fetch('/api/process_product_order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: activeReviewOrder.id, action: action })
-            });
-            const data = await res.json();
-            if (data.status === "success") {
-                alert(action === 'accept' ? 'تم قبول طلب الشراء بنجاح!' : 'تم رفض طلب الشراء وإعادة المبلغ لحساب المستخدم!');
-                closeModal('reviewOrderModal');
-                openCheckOrdersPage();
-                fetchStatsAndRender();
-            } else {
-                alert(data.message || 'حدث خطأ في معالجة العملية!');
-            }
+            ckOrderDecide(activeReviewOrder, action);
         }
 
         let depositRequestsData = [];
@@ -15393,6 +15575,11 @@ ADMIN_HTML_CONTENT = """
             }
         }
 
+        let ckDepFilter = 'pending';
+        let ckDepLimit = 40;
+        let ckDepTimer = null;
+        let ckDepLastPending = -1;
+
         function openCheckDepositsPage() {
             toggleSidebar();
             document.getElementById('adminMainSection').style.display = 'none';
@@ -15403,76 +15590,210 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('apiImportScreen').classList.remove('active');
             document.getElementById('clientsListScreen').classList.remove('active');
             document.getElementById('checkDepositsPage').style.display = 'flex';
-
-            fetch('/api/get_deposit_requests')
-                .then(r => r.json())
-                .then(requests => {
-                    depositRequestsData = requests;
-                    renderDepositRequestsList();
-                });
+            ckDepFilter = 'pending'; ckDepLimit = 40; ckDepLastPending = -1;
+            document.getElementById('ckDepSearch').value = '';
+            ckDepLoad(false);
+            ckDepStartTimer();
         }
 
         function closeCheckDepositsPage() {
+            if (ckDepTimer) { clearInterval(ckDepTimer); ckDepTimer = null; }
             document.getElementById('checkDepositsPage').style.display = 'none';
             document.getElementById('adminMainSection').style.display = 'block';
             fetchStatsAndRender();
         }
 
-        function renderDepositRequestsList() {
-            const container = document.getElementById('depositRequestsList');
-            container.innerHTML = '';
-            const pending = depositRequestsData.filter(r => r.status === 'قيد التدقيق');
+        function ckDepStartTimer() {
+            if (ckDepTimer) clearInterval(ckDepTimer);
+            ckDepTimer = setInterval(function () {
+                const pg = document.getElementById('checkDepositsPage');
+                if (!pg || pg.style.display !== 'flex') { clearInterval(ckDepTimer); ckDepTimer = null; return; }
+                const auto = document.getElementById('ckDepAuto');
+                const modalOpen = document.getElementById('reviewDepositModal').classList.contains('active');
+                if (auto && auto.checked && !ckBusy && !modalOpen) ckDepLoad(true);
+            }, 25000);
+        }
 
-            if (pending.length === 0) {
-                container.innerHTML = `<div style="text-align:center; color:#a1a1aa; font-size:0.8rem; padding:20px;">لا توجد طلبات إيداع قيد الانتظار حالياً</div>`;
+        function ckDepLoad(silent) {
+            const box = document.getElementById('depositRequestsList');
+            if (!silent) box.innerHTML = ckSkeleton();
+            ckSpin('ckDepRefreshBtn', true);
+            return fetch('/api/get_deposit_requests')
+                .then(function (r) { return r.json(); })
+                .then(function (requests) {
+                    depositRequestsData = Array.isArray(requests) ? requests : [];
+                    const pend = depositRequestsData.filter(function (r) { return ckDepKind(r.status) === 'pending'; }).length;
+                    if (silent && ckDepLastPending >= 0 && pend > ckDepLastPending) ckToast('وصل طلب إيداع جديد');
+                    ckDepLastPending = pend;
+                    ckDepRender();
+                })
+                .catch(function () { if (!silent) box.innerHTML = '<div class="ck-empty">تعذر تحميل الإيداعات، جرّب التحديث</div>'; })
+                .then(function () { ckSpin('ckDepRefreshBtn', false); });
+        }
+
+        function ckDepKind(st) {
+            st = String(st || '');
+            if (st === 'قيد التدقيق') return 'pending';
+            if (st === 'مقبول') return 'accepted';
+            if (st.indexOf('مرفوض') > -1) return 'rejected';
+            return 'other';
+        }
+        const CK_DEP_KIND = { pending: 'قيد التدقيق', accepted: 'مقبول', rejected: 'مرفوض', other: 'أخرى' };
+
+        function ckDepSetFilter(f) { ckDepFilter = f; ckDepLimit = 40; ckDepRender(); }
+
+        function ckDepRender() {
+            const all = depositRequestsData.map(function (r) { return { r: r, k: ckDepKind(r.status) }; });
+            const cnt = { pending: 0, accepted: 0, rejected: 0, other: 0 };
+            let pendSum = 0, accSum = 0;
+            const txCount = {};
+            all.forEach(function (x) {
+                cnt[x.k]++;
+                const amt = parseFloat(x.r.amount) || 0;
+                if (x.k === 'pending') pendSum += amt;
+                if (x.k === 'accepted') accSum += amt;
+                const t = String(x.r.tx_id || '').trim().toLowerCase();
+                if (t) txCount[t] = (txCount[t] || 0) + 1;
+            });
+
+            document.querySelectorAll('#ckDepChips .ck-chip').forEach(function (ch) {
+                const f = ch.getAttribute('data-f');
+                ch.querySelector('b').textContent = f === 'all' ? all.length : cnt[f];
+                ch.classList.toggle('active', f === ckDepFilter);
+            });
+            document.getElementById('ckDepSub').textContent = cnt.pending ? ('يوجد ' + cnt.pending + ' إيداع بانتظار التدقيق') : 'ما في إيداعات معلّقة حالياً';
+            document.getElementById('ckDepStats').innerHTML =
+                ckTile(cnt.pending, 'إيداعات معلّقة', '#fbbf24') +
+                ckTile(formatBalance(pendSum) + ' $', 'مبلغ المعلّق', '#4ade80') +
+                ckTile(formatBalance(accSum) + ' $', 'إجمالي المقبول', '#38bdf8') +
+                ckTile(cnt.rejected, 'مرفوضة', '#a1a1aa');
+
+            let list = all.filter(function (x) { return ckDepFilter === 'all' ? true : x.k === ckDepFilter; });
+            const q = document.getElementById('ckDepSearch').value.trim().toLowerCase();
+            if (q) {
+                list = list.filter(function (x) {
+                    const r = x.r;
+                    return [r.id, r.email, r.method_name, r.tx_id, r.amount, r.local_amount, r.status].join(' ').toLowerCase().indexOf(q) > -1;
+                });
+            }
+            const sort = document.getElementById('ckDepSort').value;
+            list.sort(function (a, b) {
+                if (sort === 'high') return (parseFloat(b.r.amount) || 0) - (parseFloat(a.r.amount) || 0);
+                const d = (ckParseDate(b.r.date) - ckParseDate(a.r.date)) || ((b.r.id || 0) - (a.r.id || 0));
+                return sort === 'old' ? -d : d;
+            });
+
+            const box = document.getElementById('depositRequestsList');
+            if (!list.length) {
+                box.innerHTML = '<div class="ck-empty">' + (q ? 'ما في نتائج لهذا البحث' : (ckDepFilter === 'pending' ? 'لا توجد طلبات إيداع قيد الانتظار حالياً' : 'لا توجد إيداعات ضمن هذا التصنيف')) + '</div>';
                 return;
             }
+            let html = list.slice(0, ckDepLimit).map(function (x) {
+                const t = String(x.r.tx_id || '').trim().toLowerCase();
+                return ckDepCardHtml(x, !!t && txCount[t] > 1);
+            }).join('');
+            if (list.length > ckDepLimit) {
+                html += '<div class="ck-more" onclick="ckDepLimit += 40; ckDepRender()">عرض المزيد (' + (list.length - ckDepLimit) + ' متبقي)</div>';
+            }
+            box.innerHTML = html;
+        }
 
-            pending.forEach(r => {
-                const card = document.createElement('div');
-                card.className = 'request-card-item';
-                card.onclick = () => openReviewDepositModal(r);
-                card.innerHTML = `
-                    <div class="card-val-right">${formatBalance(r.amount)} $</div>
-                    <div class="card-title-left">${r.method_name}</div>
-                `;
-                container.appendChild(card);
-            });
+        function ckDepCardHtml(x, dup) {
+            const r = x.r;
+            const isPending = x.k === 'pending';
+            let h = '<div class="ck-card k-' + x.k + '">';
+            h += '<div class="ck-top"><span class="ck-badge">' + CK_DEP_KIND[x.k] + '</span>';
+            if (r.auto) h += '<span class="ck-pill">تلقائي</span>';
+            if (dup) h += '<span class="ck-pill warn">رقم عملية مكرر!</span>';
+            h += '<span class="ck-id" onclick="ckCopy(' + r.id + ')">#' + ckEsc(r.id) + '</span></div>';
+            h += '<div class="ck-title">' + ckEsc(r.method_name || 'طريقة غير معروفة') + '</div>';
+            h += '<div class="ck-meta">';
+            h += ckKv('العميل', ckCopyB(r.email || '-'), true);
+            h += ckKv('رقم العملية', ckCopyB(r.tx_id || '-'), true);
+            const lc = parseFloat(r.local_amount) || 0;
+            if (lc > 0) h += ckKv('المبلغ المحوّل', '<b>' + ckEsc(lc) + '</b>');
+            const ex = parseFloat(r.exchange_rate) || 0;
+            if (ex > 0 && lc > 0) h += ckKv('سعر الصرف', '<b>' + ckEsc(ex) + '</b>');
+            h += ckKv('الوقت', '<b style="direction:ltr; text-align:right; display:block;">' + ckEsc(r.date || '-') + '</b>', true);
+            h += '</div>';
+            if (isPending && r.receipt_image) {
+                h += '<img class="ck-thumb" loading="lazy" src="' + ckEsc(r.receipt_image) + '" onclick="ckDepAct(' + r.id + ',' + "'img'" + ')" alt="">';
+            }
+            h += '<div class="ck-foot"><div class="ck-price">' + formatBalance(r.amount) + ' $</div><div class="ck-actions">';
+            h += '<button class="ck-btn" onclick="ckInspect(' + "'" + ckEsc(r.email) + "'" + ')">كشف العميل</button>';
+            if (!isPending && r.receipt_image) h += '<button class="ck-btn" onclick="ckDepAct(' + r.id + ',' + "'img'" + ')">الإشعار</button>';
+            h += '<button class="ck-btn" onclick="ckDepAct(' + r.id + ',' + "'view'" + ')">تفاصيل</button>';
+            if (isPending) {
+                h += '<button class="ck-btn no" onclick="ckDepAct(' + r.id + ',' + "'reject'" + ')">رفض</button>';
+                h += '<button class="ck-btn ok" onclick="ckDepAct(' + r.id + ',' + "'accept'" + ')">قبول</button>';
+            }
+            h += '</div></div></div>';
+            return h;
+        }
+
+        function ckDepAct(id, act) {
+            const r = depositRequestsData.find(function (x) { return x.id === id; });
+            if (!r) return;
+            if (act === 'view') { openReviewDepositModal(r); return; }
+            if (act === 'img') { ckLightbox(r.receipt_image); return; }
+            ckDepDecide(r, act);
+        }
+
+        async function ckDepDecide(r, action) {
+            if (ckBusy) return;
+            const msg = action === 'accept'
+                ? 'تأكيد قبول الإيداع #' + r.id + ' وإضافة ' + formatBalance(r.amount) + ' $ لرصيد ' + (r.email || 'العميل') + '؟'
+                : 'تأكيد رفض الإيداع #' + r.id + '؟';
+            if (!confirm(msg)) return;
+            ckBusy = true;
+            try {
+                const res = await fetch('/api/process_deposit_request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: r.id, action: action })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    ckToast(action === 'accept' ? 'تم قبول الإيداع وإضافة الرصيد' : 'تم رفض الإيداع');
+                    closeModal('reviewDepositModal');
+                    await ckDepLoad(true);
+                    fetchStatsAndRender();
+                } else {
+                    ckToast(data.message || 'حدث خطأ في معالجة العملية!', 'err');
+                }
+            } catch (e) { ckToast('تعذر الاتصال بالسيرفر', 'err'); }
+            ckBusy = false;
         }
 
         let activeReviewDeposit = null;
 
         function openReviewDepositModal(req) {
             activeReviewDeposit = req;
+            const k = ckDepKind(req.status);
+            document.getElementById('revDepMeta').innerText = (req.method_name || '-') + '  |  ' + CK_DEP_KIND[k] + '  |  ' + (req.date || '');
             document.getElementById('revAmount').innerText = formatBalance(req.amount) + " $";
             document.getElementById('revTxId').innerText = req.tx_id || 'لا يوجد';
             document.getElementById('revEmail').innerText = req.email || 'غير معروف';
 
             const imgContainer = document.getElementById('revReceiptContainer');
+            imgContainer.innerHTML = '';
             if (req.receipt_image) {
-                imgContainer.innerHTML = `<img src="${req.receipt_image}" style="max-width:100%; max-height:180px; border-radius:6px; border:1px solid #27272a;" />`;
+                const im = document.createElement('img');
+                im.src = req.receipt_image;
+                im.style.cssText = 'max-width:100%; max-height:180px; border-radius:6px; border:1px solid #27272a; cursor:zoom-in;';
+                im.onclick = function () { ckLightbox(req.receipt_image); };
+                imgContainer.appendChild(im);
             } else {
                 imgContainer.innerText = 'لا توجد صورة مرفقة';
             }
+            const row = document.querySelector('#reviewDepositModal .action-btns-row');
+            if (row) row.style.display = k === 'pending' ? '' : 'none';
             openModal('reviewDepositModal');
         }
 
-        async function processDepositDecision(action) {
+        function processDepositDecision(action) {
             if (!activeReviewDeposit) return;
-            const res = await fetch('/api/process_deposit_request', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: activeReviewDeposit.id, action: action })
-            });
-            const data = await res.json();
-            if (data.status === "success") {
-                alert(action === 'accept' ? 'تم قبول الإيداع وإضافة الرصيد لحساب المستخدم!' : 'تم رفض الإيداع!');
-                closeModal('reviewDepositModal');
-                openCheckDepositsPage();
-                fetchStatsAndRender();
-            } else {
-                alert(data.message || 'حدث خطأ في معالجة العملية!');
-            }
+            ckDepDecide(activeReviewDeposit, action);
         }
 
         function openAddDepositMethodModal() {
