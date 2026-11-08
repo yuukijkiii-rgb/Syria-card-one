@@ -8467,7 +8467,15 @@ ADMIN_HTML_CONTENT = """
                 <button class="sub-menu-btn" onclick="openViewProvidersPage()">عرض المزودات</button>
                 <button class="sub-menu-btn" onclick="openApiImportScreen()" style="color:#4ade80; border-color:#4ade80; font-weight:800;">سحب API</button>
                 <button class="sub-menu-btn" onclick="openImportedSectionsScreen()" style="color:#f5c76b; border-color:#f5c76b; font-weight:800;">تعديل قسم مسحوب</button>
+            </div>
+
+            <button class="admin-menu-btn" onclick="toggleSubMenu('invProfitMenu')">
+                <span>ادارة الجرد والمرابح</span>
+                <span><svg class="ic"><use href="#i-chevron"/></svg></span>
+            </button>
+            <div class="sub-menu" id="invProfitMenu">
                 <button class="sub-menu-btn" onclick="openInventoryScreen()" style="color:#38bdf8; border-color:#38bdf8; font-weight:800;"><svg class="ic"><use href="#i-inventory"/></svg> ادارة جرد</button>
+                <button class="sub-menu-btn" onclick="openApiInvScreen()" style="color:#e8c26a; border-color:#e8c26a; font-weight:800;"><svg class="ic"><use href="#i-plug"/></svg> جرد عملائي Api</button>
             </div>
 
             <button class="admin-menu-btn" onclick="toggleSubMenu('usersMenu')">
@@ -8658,7 +8666,6 @@ ADMIN_HTML_CONTENT = """
                     <label class="cl-lbl"><span>انضم من</span><input type="date" id="clJoinFrom" onchange="clientsApplyFilters()"></label>
                     <label class="cl-lbl"><span>إلى</span><input type="date" id="clJoinTo" onchange="clientsApplyFilters()"></label>
                     <button class="btn-secondary" onclick="clientsClearFilters()">مسح الفلاتر</button>
-                    <button class="cl-xls" onclick="clientsExportXlsx()">تصدير Excel</button>
                 </div>
                 <div class="cl-sum" id="clSummary"></div>
             </div>
@@ -9396,8 +9403,6 @@ ADMIN_HTML_CONTENT = """
                     </div>
                     <div class="ord-top-actions">
                         <button class="ord-btn" onclick="ordReload()"><svg class="ic"><use href="#i-refresh"/></svg><span>تحديث</span></button>
-                        <button class="ord-btn" onclick="ordExportXlsx()"><svg class="ic"><use href="#i-download"/></svg><span>تصدير Excel</span></button>
-                        <button class="ord-btn" onclick="ordExportCsv()"><svg class="ic"><use href="#i-download"/></svg><span>تصدير CSV</span></button>
                         <button class="ord-btn ord-btn-primary" onclick="closeAllOrdersScreen()"><svg class="ic"><use href="#i-arrow-right"/></svg><span>رجوع</span></button>
                     </div>
                 </div>
@@ -9449,6 +9454,99 @@ ADMIN_HTML_CONTENT = """
         </div>
 
         <style>
+            /* ===== شاشة جرد عملائي Api ===== */
+            body #apiInvScreen {
+                display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 99999;
+                overflow-y: auto; padding: 0; flex-direction: column; gap: 0;
+                background: radial-gradient(900px 520px at 85% -10%, rgba(232,194,106,0.14), transparent 60%),
+                            radial-gradient(760px 420px at 0% 0%, rgba(167,139,250,0.10), transparent 60%),
+                            radial-gradient(600px 400px at 50% 110%, rgba(45,212,191,0.07), transparent 60%), var(--bg-0);
+            }
+            body.light-mode-admin #apiInvScreen { background: var(--bg-0); }
+            body #apiInvScreen.active { display: flex; }
+            .aiv-hero { position: relative; overflow: hidden; border-radius: 24px; padding: 22px; display: flex; flex-direction: column; gap: 14px;
+                border: 1px solid rgba(232,194,106,.45);
+                background: linear-gradient(135deg, rgba(232,194,106,.13), rgba(20,20,30,.0) 55%), linear-gradient(160deg, var(--bg-3), var(--bg-1));
+                box-shadow: 0 18px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
+            .aiv-hero::before { content: ''; position: absolute; top: -90px; left: -90px; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, rgba(232,194,106,.22), transparent 70%); pointer-events: none; }
+            body.light-mode-admin .aiv-hero { background: linear-gradient(135deg, #fff7df, #fff); }
+            .aiv-hero-h { display: flex; align-items: center; gap: 12px; position: relative; }
+            .aiv-hero-ico { width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: #1a1405; background: linear-gradient(135deg, var(--gold), var(--gold-3)); box-shadow: 0 8px 22px rgba(232,194,106,.35); flex-shrink: 0; }
+            .aiv-hero-ico .ic { width: 24px; height: 24px; }
+            .aiv-hero-t { font-size: 1.05rem; font-weight: 800; color: var(--txt); }
+            .aiv-hero-s { font-size: .74rem; color: var(--muted); font-weight: 600; margin-top: 2px; line-height: 1.7; }
+            .aiv-link-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; position: relative; }
+            .aiv-link-box { flex: 1 1 360px; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 0 14px; border-radius: 14px; background: var(--bg-0); border: 1.5px solid var(--line-2); transition: border-color .2s, box-shadow .2s; }
+            .aiv-link-box:focus-within { border-color: var(--gold); box-shadow: 0 0 0 4px rgba(232,194,106,.14); }
+            .aiv-link-box .ic { width: 18px; height: 18px; color: var(--gold); flex-shrink: 0; }
+            .aiv-link-box input { flex: 1; min-width: 0; background: transparent !important; border: none !important; outline: none; color: var(--txt); font-size: .9rem; font-weight: 700; padding: 14px 0 !important; direction: ltr; text-align: left; font-family: ui-monospace, Menlo, Consolas, monospace; box-shadow: none !important; margin: 0 !important; width: auto !important; }
+            .aiv-link-meta { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: .72rem; font-weight: 700; color: var(--muted); position: relative; }
+            .aiv-dot { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--bg-0); }
+            .aiv-dot i { width: 8px; height: 8px; border-radius: 50%; background: #34d399; box-shadow: 0 0 8px #34d399; }
+            .aiv-dot.custom i { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+            .aiv-eps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; position: relative; }
+            @media (min-width: 900px) { .aiv-eps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+            .aiv-ep { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: rgba(0,0,0,.22); border: 1px solid var(--line-2); min-width: 0; }
+            body.light-mode-admin .aiv-ep { background: var(--bg-2); }
+            .aiv-ep b { font-size: .66rem; font-weight: 800; padding: 3px 8px; border-radius: 6px; background: #16a34a; color: #fff; flex-shrink: 0; }
+            .aiv-ep code { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .74rem; color: #7dd3fc; direction: ltr; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .aiv-ep button { background: transparent; border: none; color: var(--muted); cursor: pointer; padding: 2px; display: flex; flex-shrink: 0; }
+            .aiv-ep button:hover { color: var(--gold); }
+            .aiv-ep button .ic { width: 15px; height: 15px; }
+            .aiv-share { display: flex; height: 16px; border-radius: 999px; overflow: hidden; background: var(--bg-0); border: 1px solid var(--line-2); }
+            .aiv-share i { display: block; height: 100%; transition: width .6s ease; }
+            .aiv-share-leg { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: .76rem; font-weight: 700; color: var(--muted); }
+            .aiv-share-leg b { color: var(--txt); direction: ltr; display: inline-block; }
+            .aiv-alerts { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+            @media (min-width: 900px) { .aiv-alerts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+            .aiv-al { border-radius: 16px; padding: 14px; border: 1px solid var(--line-2); background: var(--bg-0); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+            body.light-mode-admin .aiv-al { background: var(--bg-2); }
+            .aiv-al-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: .8rem; font-weight: 800; color: var(--txt); }
+            .aiv-al-h .ic { width: 16px; height: 16px; margin-left: 6px; vertical-align: -3px; }
+            .aiv-al-n { min-width: 26px; text-align: center; padding: 2px 9px; border-radius: 999px; font-size: .74rem; font-weight: 800; }
+            .aiv-al.warn .aiv-al-h .ic { color: #fbbf24; } .aiv-al.warn .aiv-al-n { background: rgba(251,191,36,.14); color: #fbbf24; }
+            .aiv-al.bad .aiv-al-h .ic { color: #f87171; } .aiv-al.bad .aiv-al-n { background: rgba(248,113,113,.14); color: #f87171; }
+            .aiv-al.info .aiv-al-h .ic { color: #38bdf8; } .aiv-al.info .aiv-al-n { background: rgba(56,189,248,.14); color: #38bdf8; }
+            .aiv-al-row { display: flex; justify-content: space-between; gap: 10px; font-size: .74rem; font-weight: 700; color: var(--muted); }
+            .aiv-al-row span:first-child { direction: ltr; text-align: right; color: var(--txt); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .aiv-al-ok { font-size: .74rem; font-weight: 700; color: #34d399; }
+            .aiv-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+            .aiv-tools .ord-search { flex: 1 1 260px; }
+            .aiv-sel { padding: 10px 12px; border-radius: 12px; background: var(--bg-0); border: 1px solid var(--line-2); color: var(--txt); font-size: .78rem; font-weight: 700; font-family: inherit; width: auto !important; }
+            .aiv-tbl { min-width: 1020px; display: flex; flex-direction: column; }
+            .aiv-tr { display: grid; grid-template-columns: minmax(210px, 2.4fr) 1fr .7fr .7fr 1fr 1fr .9fr 1fr .9fr; gap: 10px; align-items: center; padding: 12px 8px; border-bottom: 1px dashed var(--line-2); font-size: .8rem; color: var(--txt); font-variant-numeric: tabular-nums; }
+            .aiv-tr.head { font-size: .7rem; font-weight: 800; color: var(--muted); border-bottom: 1px solid var(--line-2); }
+            .aiv-tr.row { cursor: pointer; border-radius: 12px; transition: background .15s; }
+            .aiv-tr.row:hover { background: rgba(232,194,106,.06); }
+            .aiv-tr.row.open { background: rgba(232,194,106,.09); }
+            .aiv-tr .num { direction: ltr; text-align: right; }
+            .aiv-cl { display: flex; align-items: center; gap: 10px; min-width: 0; }
+            .aiv-av { width: 34px; height: 34px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: .86rem; color: #1a1405; background: linear-gradient(135deg, var(--gold), var(--gold-3)); flex-shrink: 0; }
+            .aiv-cl-t { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+            .aiv-cl-t b { font-size: .8rem; direction: ltr; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .aiv-cl-t small { font-size: .66rem; color: var(--muted); font-weight: 700; }
+            .aiv-st { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .7rem; font-weight: 800; border: 1px solid; width: fit-content; white-space: nowrap; }
+            .aiv-st.active { color: #34d399; background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.4); }
+            .aiv-st.dormant { color: #fbbf24; background: rgba(251,191,36,.1); border-color: rgba(251,191,36,.4); }
+            .aiv-st.never { color: #38bdf8; background: rgba(56,189,248,.1); border-color: rgba(56,189,248,.4); }
+            .aiv-st.disabled { color: #f87171; background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.4); }
+            .aiv-tg { padding: 6px 12px; border-radius: 10px; font-size: .7rem; font-weight: 800; cursor: pointer; font-family: inherit; border: 1px solid var(--line-2); background: var(--bg-3); color: var(--txt); }
+            .aiv-tg.off { color: #f87171; border-color: rgba(248,113,113,.45); }
+            .aiv-tg.on { color: #34d399; border-color: rgba(52,211,153,.45); }
+            .aiv-detail { padding: 14px; margin: 2px 4px 10px; border-radius: 16px; background: var(--bg-0); border: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 14px; cursor: default; }
+            body.light-mode-admin .aiv-detail { background: var(--bg-2); }
+            .aiv-dtiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+            @media (min-width: 760px) { .aiv-dtiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+            .aiv-ord { display: grid; grid-template-columns: 1.6fr .8fr .8fr .9fr; gap: 10px; align-items: center; padding: 9px 4px; border-bottom: 1px dashed var(--line-2); font-size: .76rem; font-weight: 700; }
+            .aiv-ord:last-child { border-bottom: none; }
+            .aiv-ord .num { direction: ltr; text-align: right; }
+            .aiv-ord em { font-style: normal; color: var(--muted); font-size: .68rem; display: block; margin-top: 2px; }
+            .aiv-more { text-align: center; font-size: .74rem; color: var(--muted); font-weight: 700; padding: 8px 0 0; }
+            @media (max-width: 520px) { .aiv-hero { padding: 16px; } }
+            #aivBody { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+            .inv-tile b span { font-size: inherit; }
+            .inv-tile b .inv-pos { color: #34d399; } .inv-tile b .inv-neg { color: #f87171; } .inv-tile b .inv-dim { color: var(--muted); }
+
             /* ===== شاشة إدارة الجرد ===== */
             body #inventoryScreen {
                 display: none; position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 99999;
@@ -9563,6 +9661,59 @@ ADMIN_HTML_CONTENT = """
                 <div class="ord-meta"><span id="invRangeLabel"></span><span id="invGenerated"></span></div>
 
                 <div id="invBody"></div>
+            </div>
+        </div>
+
+        <div id="apiInvScreen">
+            <div class="ord-shell">
+                <div class="ord-topbar">
+                    <div class="ord-brand">
+                        <div class="ord-brand-ico"><svg class="ic"><use href="#i-plug"/></svg></div>
+                        <div>
+                            <div class="ord-h1">جرد عملائي Api</div>
+                            <div class="ord-h2">جرد شامل لكل عملاء الـ API: مبيعاتهم وأرباحهم وأرصدتهم ونشاطهم وطلباتهم</div>
+                        </div>
+                    </div>
+                    <div class="ord-top-actions">
+                        <button class="ord-btn" onclick="aivReload()"><svg class="ic"><use href="#i-refresh"/></svg><span>تحديث</span></button>
+                        <button class="ord-btn ord-btn-primary" onclick="closeApiInvScreen()"><svg class="ic"><use href="#i-arrow-right"/></svg><span>رجوع</span></button>
+                    </div>
+                </div>
+
+                <div class="aiv-hero">
+                    <div class="aiv-hero-h">
+                        <div class="aiv-hero-ico"><svg class="ic"><use href="#i-globe"/></svg></div>
+                        <div>
+                            <div class="aiv-hero-t">رابط الـ API</div>
+                            <div class="aiv-hero-s">هذا الرابط هو اللي يظهر لعملائك داخل حساباتهم وفي صفحة التوثيق. غيّره من هنا وبيتحدّث مباشرة.</div>
+                        </div>
+                    </div>
+                    <div class="aiv-link-row">
+                        <div class="aiv-link-box"><svg class="ic"><use href="#i-plug"/></svg><input type="text" id="aivLinkInput" placeholder="https://your-site.com/client/api" autocomplete="off" spellcheck="false" oninput="aivLinkPreview()"></div>
+                        <button class="ord-btn ord-btn-primary" onclick="aivSaveLink()"><svg class="ic"><use href="#i-check"/></svg><span>حفظ الرابط</span></button>
+                        <button class="ord-btn" onclick="aivCopyLink()"><svg class="ic"><use href="#i-copy"/></svg><span>نسخ</span></button>
+                        <button class="ord-btn" onclick="aivResetLink()"><svg class="ic"><use href="#i-refresh"/></svg><span>الافتراضي</span></button>
+                    </div>
+                    <div class="aiv-link-meta" id="aivLinkMeta"></div>
+                    <div class="aiv-eps" id="aivEndpoints"></div>
+                </div>
+
+                <div class="ord-toolbar">
+                    <div class="ord-chips" id="aivChips">
+                        <button class="ord-chip" data-r="today"><svg class="ic"><use href="#i-clock"/></svg>اليوم</button>
+                        <button class="ord-chip" data-r="yesterday">أمس</button>
+                        <button class="ord-chip" data-r="week">7 أيام</button>
+                        <button class="ord-chip active" data-r="month">هذا الشهر</button>
+                        <button class="ord-chip" data-r="prev_month">الشهر الماضي</button>
+                        <button class="ord-chip" data-r="last30">30 يوم</button>
+                        <button class="ord-chip" data-r="year">هذه السنة</button>
+                        <button class="ord-chip" data-r="all">الكل</button>
+                    </div>
+                </div>
+
+                <div class="ord-meta"><span id="aivRangeLabel"></span><span id="aivGenerated"></span></div>
+
+                <div id="aivBody"></div>
             </div>
         </div>
 
@@ -10750,7 +10901,7 @@ ADMIN_HTML_CONTENT = """
             openAddCategoryModal: 'products', openDeleteCategoryModal: 'products', openAddProductModal: 'products',
             openAddSubCategoryModal: 'products', openAddCounterCategoryModal: 'products', openAddGroupModal: 'products',
             openManageGroupsModal: 'products', openDeleteSubCategoryPage: 'products', openDeleteProductPage: 'products',
-            openImportedSectionsScreen: 'products', openInventoryScreen: 'products',
+            openImportedSectionsScreen: 'products', openInventoryScreen: 'products', openApiInvScreen: 'api',
             openAddApiModal: 'api', openProfitMarginModal: 'api', openViewProvidersPage: 'api', openApiImportScreen: 'api',
             openCategoryModal: 'design', openBannerModal: 'design', openDeleteBannerModal: 'design',
             openCategoryBannerModal: 'design', openSplashModal: 'design', openSplashVideoModal: 'design',
@@ -11612,7 +11763,7 @@ ADMIN_HTML_CONTENT = """
             if (list.length > shown.length) {
                 var more = document.createElement('div');
                 more.style.cssText = 'text-align:center; color:#a1a1aa; font-size:0.78rem; padding:10px;';
-                more.textContent = 'تم عرض أول 300 عميل. استخدم البحث أو الفلاتر لتضييق النتائج (التصدير بيشمل كل النتائج).';
+                more.textContent = 'تم عرض أول 300 عميل. استخدم البحث أو الفلاتر لتضييق النتائج.';
                 container.appendChild(more);
             }
         }
@@ -15400,7 +15551,7 @@ ADMIN_HTML_CONTENT = """
     tick(); setInterval(tick, 1000);
 
     /* أيقونات القائمة الجانبية */
-    var ICONS = { 'إعدادات الموقع': 'settings', 'إدارة الشكل والصور': 'palette', 'إدارة المنتجات والخدمات': 'bag', 'إدارة API': 'plug', 'إدارة المستخدمين': 'user', 'إدارة الإيداعات': 'gem' };
+    var ICONS = { 'إعدادات الموقع': 'settings', 'إدارة الشكل والصور': 'palette', 'إدارة المنتجات والخدمات': 'bag', 'إدارة API': 'plug', 'ادارة الجرد والمرابح': 'inventory', 'إدارة المستخدمين': 'user', 'إدارة الإيداعات': 'gem' };
     function decorateMenu() {
         var btns = document.querySelectorAll('.admin-menu-btn');
         for (var i = 0; i < btns.length; i++) {
@@ -16040,7 +16191,7 @@ ADMIN_HTML_CONTENT = """
         ['adminMainSection', 'checkOrdersPage', 'checkDepositsPage', 'viewProvidersPage', 'deleteCategoryPage', 'deleteProductPage'].forEach(function (id) {
             var el = $(id); if (el) el.style.display = 'none';
         });
-        ['clientsListScreen', 'apiImportScreen', 'allOrdersScreen'].forEach(function (id) {
+        ['clientsListScreen', 'apiImportScreen', 'allOrdersScreen', 'apiInvScreen'].forEach(function (id) {
             var el = $(id); if (el) el.classList.remove('active');
         });
         $('inventoryScreen').classList.add('active');
@@ -16124,6 +16275,497 @@ ADMIN_HTML_CONTENT = """
         ];
         window.adminExportXlsx('inventory_' + new Date().toISOString().slice(0, 10), sheets);
     };
+})();
+
+/* ===== جرد عملائي Api (ادارة الجرد والمرابح > جرد عملائي Api) ===== */
+(function () {
+    function $(id) { return document.getElementById(id); }
+    function ico(n) { return '<svg class="ic"><use href="#i-' + n + '"/></svg>'; }
+    function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+    function fmt(v) {
+        var n = parseFloat(v || 0); if (isNaN(n)) n = 0;
+        if (Math.abs(n) >= 1) return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        if (n === 0) return '0.00';
+        var t = n.toFixed(4).replace(/0+$/, '');
+        if (t.charAt(t.length - 1) === '.') t += '00';
+        return t;
+    }
+    function usd(v) { var n = parseFloat(v || 0) || 0; return (n < 0 ? '-$' : '$') + fmt(Math.abs(n)); }
+    function pct(v) { return (parseFloat(v || 0) || 0).toFixed(1) + '%'; }
+    function cls(v) { return v > 0 ? 'inv-pos' : (v < 0 ? 'inv-neg' : 'inv-dim'); }
+    function toast(m, i) { if (window.showPremiumToast) window.showPremiumToast(m, i || 'check-circle'); }
+
+    var AIV = { range: 'month', data: null, chart: 'daily', busy: false, q: '', filter: 'all', sort: 'p_revenue', open: '', limit: 60, linkLoaded: false };
+    var RANGE_NAMES = { today: 'اليوم', yesterday: 'أمس', week: 'آخر 7 أيام', month: 'هذا الشهر', prev_month: 'الشهر الماضي', last30: 'آخر 30 يوم', year: 'هذه السنة', all: 'كل الفترات' };
+    var WD_NAMES = ['الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
+    var WD_ORDER = [5, 6, 0, 1, 2, 3, 4];
+    var PERIOD_ICONS = { today: 'clock', yesterday: 'clock', week: 'calendar-days', prev_week: 'calendar-days', month: 'calendar', prev_month: 'calendar', last30: 'calendar-days', year: 'calendar', all: 'database' };
+    var STATE_LBL = { active: 'نشط', dormant: 'خامل +30 يوم', never: 'ما استخدم بعد', disabled: 'موقوف' };
+    var STATE_ICO = { active: 'zap', dormant: 'hourglass', never: 'inbox', disabled: 'lock' };
+    var ORD_LBL = { done: 'ناجح', rejected: 'مرفوض', pending: 'انتظار' };
+
+    function setChips() {
+        var chips = document.querySelectorAll('#aivChips .ord-chip');
+        for (var i = 0; i < chips.length; i++) { chips[i].classList.toggle('active', chips[i].getAttribute('data-r') === AIV.range); }
+    }
+
+    function skeleton() {
+        $('aivBody').innerHTML = '<div class="ord-skel"></div><div class="ord-skel"></div><div class="ord-skel"></div><div class="ord-skel"></div>';
+    }
+
+    /* ---------- رابط الـ API ---------- */
+    function trimSlash(s) { s = String(s || '').trim(); while (s.length && s.charAt(s.length - 1) === '/') s = s.substring(0, s.length - 1); return s; }
+
+    function renderEndpoints() {
+        var box = $('aivEndpoints'); if (!box) return;
+        var base = trimSlash($('aivLinkInput').value) || 'https://your-site.com/client/api';
+        var eps = [
+            ['GET', base + '/profile'],
+            ['GET', base + '/products'],
+            ['GET', base + '/content/0'],
+            ['GET', base + '/newOrder/ID/params?qty=1&playerId=PLAYER&order_uuid=UUID'],
+            ['GET', base + '/check?orders=[UUID]&uuid=1']
+        ];
+        box.innerHTML = eps.map(function (e, i) {
+            return '<div class="aiv-ep"><b>' + e[0] + '</b><code title="' + esc(e[1]) + '">' + esc(e[1]) + '</code><button data-ep="' + i + '" title="نسخ">' + ico('copy') + '</button></div>';
+        }).join('');
+        box._eps = eps;
+    }
+
+    function renderLinkMeta(info) {
+        var m = $('aivLinkMeta'); if (!m) return;
+        if (!info) { m.innerHTML = ''; return; }
+        m.innerHTML = '<span class="aiv-dot' + (info.is_default ? '' : ' custom') + '"><i></i>' + (info.is_default ? 'الرابط الافتراضي' : 'رابط مخصص') + '</span>' +
+            (info.updated ? '<span>آخر تعديل: ' + esc(info.updated) + '</span>' : '') +
+            '<span style="direction:ltr;">الافتراضي: ' + esc(info.default) + '</span>';
+    }
+
+    function setLink(info) {
+        if (!info) return;
+        AIV.linkInfo = info;
+        $('aivLinkInput').value = info.url || '';
+        renderLinkMeta(info); renderEndpoints();
+    }
+
+    window.aivLinkPreview = function () { renderEndpoints(); };
+
+    function copyText(t, okMsg) {
+        function fallback() {
+            var ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select();
+            try { document.execCommand('copy'); toast(okMsg || 'تم النسخ', 'copy'); } catch (e) {}
+            document.body.removeChild(ta);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(t).then(function () { toast(okMsg || 'تم النسخ', 'copy'); }, fallback);
+        } else { fallback(); }
+    }
+
+    window.aivCopyLink = function () { var v = trimSlash($('aivLinkInput').value); if (v) copyText(v, 'تم نسخ رابط الـ API'); };
+
+    async function postLink(payload) {
+        try {
+            var res = await fetch('/api/save_api_link_settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            var j = await res.json();
+            if (j && j.status === 'success') { setLink(j); toast(j.message || 'تم الحفظ', 'check-circle'); }
+            else { toast((j && j.message) || 'تعذر حفظ الرابط', 'x-circle'); }
+        } catch (e) { toast('فشل الاتصال بالخادم', 'x-circle'); }
+    }
+    window.aivSaveLink = function () {
+        var v = trimSlash($('aivLinkInput').value);
+        if (!v) { toast('اكتب رابط الـ API أول', 'x-circle'); return; }
+        postLink({ url: v });
+    };
+    window.aivResetLink = function () {
+        if (!confirm('ترجيع رابط الـ API للرابط الافتراضي؟')) return;
+        postLink({ reset: true });
+    };
+
+    async function loadLink() {
+        try {
+            var res = await fetch('/api/get_api_link_settings', { cache: 'no-store' });
+            var j = await res.json();
+            if (j && j.status === 'success') { setLink(j); AIV.linkLoaded = true; }
+        } catch (e) {}
+    }
+
+    /* ---------- جلب الجرد ---------- */
+    async function load() {
+        if (AIV.busy) return;
+        AIV.busy = true;
+        setChips(); skeleton();
+        try {
+            var res = await fetch('/api/api_clients_inventory?range=' + encodeURIComponent(AIV.range), { cache: 'no-store' });
+            var j = await res.json();
+            if (!res.ok || j.status === 'error') { throw new Error((j && j.message) || 'err'); }
+            AIV.data = j;
+            if (!AIV.linkLoaded && j.link) { setLink(j.link); AIV.linkLoaded = true; }
+            render();
+        } catch (e) {
+            $('aivBody').innerHTML = '<div class="ord-empty">' + ico('x-circle') + '<div>فشل جلب بيانات جرد الـ API من الخادم</div></div>';
+        }
+        AIV.busy = false;
+    }
+
+    function delta(cur, prev, invert) {
+        if (prev == null) return '';
+        cur = parseFloat(cur || 0); prev = parseFloat(prev || 0);
+        if (prev === 0 && cur === 0) return '<div class="inv-delta flat">' + ico('arrow-right') + 'بدون تغيير</div>';
+        if (prev === 0) return '<div class="inv-delta up">' + ico('arrow-up-right') + 'جديد</div>';
+        var p = (cur - prev) / Math.abs(prev) * 100;
+        var good = invert ? p < 0 : p > 0;
+        if (Math.abs(p) < 0.05) return '<div class="inv-delta flat">' + ico('arrow-right') + 'ثابت</div>';
+        return '<div class="inv-delta ' + (good ? 'up' : 'down') + '">' + ico(p > 0 ? 'arrow-up-right' : 'arrow-down-right') + Math.abs(p).toFixed(1) + '% عن الفترة السابقة</div>';
+    }
+
+    function kpis(d) {
+        var s = d.summary, p = d.prev, c = d.clients_stats, sh = d.share;
+        var items = [
+            ['k-green', 'trending', usd(s.profit), 'صافي ربح الـ API', delta(s.profit, p && p.profit)],
+            ['k-gold', 'dollar', usd(s.revenue), 'مبيعات الـ API', delta(s.revenue, p && p.revenue)],
+            ['k-red', 'server', usd(s.cost), 'كلفة المزودين', delta(s.cost, p && p.cost, true)],
+            ['k-violet', 'percent', pct(s.margin), 'هامش الربح', delta(s.margin, p && p.margin)],
+            ['k-blue', 'check-circle', s.done, 'طلبات API الناجحة', delta(s.done, p && p.done)],
+            ['k-amber', 'cart', usd(s.avg_order), 'متوسط قيمة الطلب', delta(s.avg_order, p && p.avg_order)],
+            ['k-teal', 'users', c.active_period + ' / ' + c.enabled, 'عملاء اشتروا / عملاء API مفعّلين', ''],
+            ['k-sky', 'pie-chart', pct(sh.api_pct), 'حصة الـ API من كل المبيعات', '']
+        ];
+        return '<div class="inv-kpis">' + items.map(function (x) {
+            return '<div class="ord-kpi ' + x[0] + '"><div class="ord-kpi-ico">' + ico(x[1]) + '</div><div style="min-width:0;"><div class="ord-kpi-v">' + esc(x[2]) + '</div><div class="ord-kpi-l">' + x[3] + '</div>' + x[4] + '</div></div>';
+        }).join('') + '</div>';
+    }
+
+    function note(d) {
+        var s = d.summary;
+        if (s.unknown_orders > 0) {
+            return '<div class="inv-note">' + ico('alert') + '<div>يوجد <b>' + s.unknown_orders + '</b> طلب API ناجح (بقيمة <b>' + usd(s.unknown_rev) + '</b>) كلفته غير معروفة، لأن فئته يدوية وبدون سعر أصلي من مزود. هذه الطلبات تدخل في المبيعات ولا تدخل في حساب الربح والهامش.</div></div>';
+        }
+        return '';
+    }
+
+    function sharePanel(d) {
+        var sh = d.share, tot = sh.api_revenue + sh.site_revenue;
+        var a = tot > 0 ? sh.api_revenue / tot * 100 : 0;
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('pie-chart') + 'حصة الـ API مقابل الموقع والبوت</h3><small>' + esc(RANGE_NAMES[AIV.range] || '') + '</small></div>' +
+            '<div class="aiv-share"><i style="width:' + a.toFixed(2) + '%; background:linear-gradient(90deg,#b8923a,#e8c26a);"></i><i style="width:' + (100 - a).toFixed(2) + '%; background:linear-gradient(90deg,#1e3a5f,#38bdf8); opacity:.55;"></i></div>' +
+            '<div class="aiv-share-leg"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#e8c26a;margin-left:6px;"></i>API: <b>' + usd(sh.api_revenue) + '</b> (' + sh.api_orders + ' طلب، ربح ' + usd(sh.api_profit) + ')</span>' +
+            '<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#38bdf8;margin-left:6px;"></i>باقي المصادر: <b>' + usd(sh.site_revenue) + '</b> (' + sh.site_orders + ' طلب، ربح ' + usd(sh.site_profit) + ')</span></div></div>';
+    }
+
+    function clientsStatsPanel(d) {
+        var c = d.clients_stats;
+        var tiles = [
+            [c.total_users, 'إجمالي المستخدمين'], [c.enabled, 'عملاء API مفعّلين'], [pct(c.adoption), 'نسبة التفعيل من كل المستخدمين'],
+            ['<span class="inv-pos">' + c.active30 + '</span>', 'نشطين آخر 30 يوم'], ['<span style="color:#fbbf24;">' + c.dormant + '</span>', 'خاملين +30 يوم'], ['<span style="color:#38bdf8;">' + c.never + '</span>', 'مفعّلين وما استخدموا'],
+            ['<span class="inv-neg">' + c.disabled_with_orders + '</span>', 'موقوفين وعندهم طلبات'], ['<span style="color:var(--gold);">' + usd(c.balance_enabled) + '</span>', 'مجموع أرصدة عملاء API'],
+            [c.concentration_top3 == null ? '-' : pct(c.concentration_top3), 'تركّز المبيعات بأعلى 3 عملاء']
+        ];
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('users') + 'جرد عملاء الـ API</h3><small>' + d.clients_total + ' عميل</small></div><div class="inv-tiles">' +
+            tiles.map(function (t) { return '<div class="inv-tile"><b>' + t[0] + '</b><span>' + t[1] + '</span></div>'; }).join('') + '</div></div>';
+    }
+
+    function alertBox(kind, icon, title, items, rowFn, okMsg) {
+        var body = items.length ? items.map(rowFn).join('') : '<div class="aiv-al-ok">' + okMsg + '</div>';
+        return '<div class="aiv-al ' + kind + '"><div class="aiv-al-h"><span>' + ico(icon) + title + '</span><span class="aiv-al-n">' + items.length + '</span></div>' + body + '</div>';
+    }
+
+    function alertsPanel(d) {
+        var a = d.alerts;
+        var row = function (l, r) { return '<div class="aiv-al-row"><span>' + esc(l) + '</span><span>' + r + '</span></div>'; };
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('alert') + 'تنبيهات ومتابعة العملاء</h3><small>أهم 15 بكل بند</small></div><div class="aiv-alerts">' +
+            alertBox('warn', 'hourglass', 'عملاء خاملين (+30 يوم بدون طلب)', a.dormant, function (x) { return row(x.email, 'من ' + x.days + ' يوم'); }, 'ما في عملاء خاملين') +
+            alertBox('info', 'inbox', 'مفعّلين ولم يطلبوا ولا مرة', a.never, function (x) { return row(x.email, 'رصيد ' + usd(x.balance)); }, 'كل المفعّلين استخدموا الـ API') +
+            alertBox('bad', 'x-circle', 'نسبة رفض عالية (30% فأكثر)', a.high_reject, function (x) { return row(x.email, x.rejected + '/' + x.orders + ' (' + pct(x.rate) + ')'); }, 'لا توجد نسب رفض مرتفعة') +
+            alertBox('warn', 'wallet', 'رصيد واقف عند عملاء خاملين', a.idle_balance, function (x) { return row(x.email, usd(x.balance)); }, 'لا يوجد رصيد واقف') +
+            alertBox('info', 'coins', 'نشطين ورصيدهم أقل من 1$', a.low_balance, function (x) { return row(x.email, 'رصيد ' + usd(x.balance)); }, 'لا يوجد عملاء نشطين برصيد منخفض') +
+            alertBox('bad', 'lock', 'موقوفين وعندهم طلبات سابقة', a.disabled_used, function (x) { return row(x.email, x.orders + ' طلب / ' + usd(x.revenue)); }, 'لا يوجد') +
+            '</div></div>';
+    }
+
+    function periodsTable(d) {
+        var rows = d.periods.map(function (p) {
+            var cl = p.key === 'all' ? ' total' : '';
+            return '<div class="inv-tr' + cl + '">' +
+                '<div class="lbl">' + ico(PERIOD_ICONS[p.key] || 'calendar') + esc(p.label) + '</div>' +
+                '<div class="num">' + p.done + '</div>' +
+                '<div class="num">' + usd(p.revenue) + '</div>' +
+                '<div class="num inv-dim">' + usd(p.cost) + '</div>' +
+                '<div class="num ' + cls(p.profit) + '">' + usd(p.profit) + '</div>' +
+                '<div class="num ' + cls(p.margin) + '">' + pct(p.margin) + '</div>' +
+                '<div class="num">' + usd(p.avg_order) + '</div></div>';
+        }).join('');
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('calendar-days') + 'جرد الـ API الدوري: يومي / أسبوعي / شهري / سنوي</h3><small>ثابت ولا يتأثر باختيار الفترة بالأعلى</small></div>' +
+            '<div class="inv-scroll"><div class="inv-tbl"><div class="inv-tr head"><div>الفترة</div><div>الطلبات</div><div>المبيعات</div><div>الكلفة</div><div>الربح</div><div>الهامش</div><div>متوسط الطلب</div></div>' + rows + '</div></div></div>';
+    }
+
+    function niceMax(v) {
+        if (v <= 0) return 1;
+        var e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10));
+        var f = v / e, m = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+        return m * e;
+    }
+
+    function chartSvg(points) {
+        var n = points.length, slot = n > 14 ? 34 : 70, left = 54, top = 14, bottom = 34, H = 250;
+        var W = left + n * slot + 10, ph = H - top - bottom;
+        var mx = 0; points.forEach(function (p) { mx = Math.max(mx, p.revenue, p.profit); });
+        mx = niceMax(mx);
+        var bw = n > 14 ? 11 : 22, g = '';
+        for (var i = 0; i <= 4; i++) {
+            var y = top + ph - (ph * i / 4);
+            g += '<line x1="' + left + '" x2="' + (W - 6) + '" y1="' + y + '" y2="' + y + '" style="stroke:var(--line-2)" stroke-dasharray="3 4"/>';
+            g += '<text x="' + (left - 8) + '" y="' + (y + 4) + '" text-anchor="end" font-size="10" style="fill:var(--muted)">' + fmt(mx * i / 4).replace('.00', '') + '</text>';
+        }
+        points.forEach(function (p, idx) {
+            var cx = left + idx * slot + slot / 2;
+            var hr = ph * (p.revenue / mx), hp = ph * (Math.max(p.profit, 0) / mx);
+            g += '<rect x="' + (cx - bw - 1) + '" y="' + (top + ph - hr) + '" width="' + bw + '" height="' + Math.max(hr, 0) + '" rx="3" fill="#e8c26a"><title>' + esc(p.label) + ' | مبيعات ' + usd(p.revenue) + ' | طلبات ' + p.orders + '</title></rect>';
+            g += '<rect x="' + (cx + 1) + '" y="' + (top + ph - hp) + '" width="' + bw + '" height="' + Math.max(hp, 0) + '" rx="3" fill="#34d399"><title>' + esc(p.label) + ' | ربح ' + usd(p.profit) + '</title></rect>';
+            if (n <= 14 || idx % 3 === 0 || idx === n - 1) {
+                g += '<text x="' + cx + '" y="' + (H - 12) + '" text-anchor="middle" font-size="10" style="fill:var(--muted)">' + esc(p.label) + '</text>';
+            }
+        });
+        return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" xmlns="http://www.w3.org/2000/svg" role="img">' + g + '</svg>';
+    }
+
+    function chartCard(d) {
+        var tabs = [['daily', 'آخر 30 يوم'], ['weekly', 'آخر 12 أسبوع'], ['monthly', 'آخر 12 شهر']].map(function (t) {
+            return '<button class="ord-chip' + (AIV.chart === t[0] ? ' active' : '') + '" data-c="' + t[0] + '">' + t[1] + '</button>';
+        }).join('');
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('bar-chart') + 'منحنى مبيعات وأرباح الـ API</h3><div class="inv-tabs" id="aivChartTabs">' + tabs + '</div></div>' +
+            '<div class="inv-legend"><span><i style="background:#e8c26a"></i>المبيعات</span><span><i style="background:#34d399"></i>الربح</span></div>' +
+            '<div class="inv-chart" id="aivChartBox">' + chartSvg(d.series[AIV.chart]) + '</div></div>';
+    }
+
+    function listPanel(title, icon, items, nameFn, subFn, emptyMsg) {
+        var mx = 0; items.forEach(function (x) { mx = Math.max(mx, x.revenue); });
+        var body = items.length ? '<div class="inv-list">' + items.map(function (x) {
+            var w = mx > 0 ? Math.max(3, x.revenue / mx * 100) : 0;
+            return '<div class="inv-li"><div class="inv-li-top"><div class="inv-li-n">' + nameFn(x) + '</div><div class="inv-li-v">' + usd(x.revenue) + '</div></div>' +
+                '<div class="inv-bar"><i style="width:' + w + '%"></i></div><div class="inv-li-s">' + subFn(x) + '</div></div>';
+        }).join('') + '</div>' : '<div class="ord-empty" style="padding:24px 10px;">' + ico('inbox') + '<div>' + emptyMsg + '</div></div>';
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico(icon) + title + '</h3></div>' + body + '</div>';
+    }
+
+    function mini(items, labelFn, valFn, color) {
+        var n = items.length, bw = 100 / n, mx = 0;
+        items.forEach(function (x) { mx = Math.max(mx, valFn(x)); });
+        var H = 90, g = '';
+        items.forEach(function (x, i) {
+            var h = mx > 0 ? (H - 6) * valFn(x) / mx : 0;
+            var peak = mx > 0 && valFn(x) === mx;
+            g += '<rect x="' + (i * bw + bw * 0.15) + '%" y="' + (H - h) + '" width="' + (bw * 0.7) + '%" height="' + h + '" rx="2" fill="' + (peak ? '#34d399' : color) + '" opacity="' + (peak ? 1 : 0.75) + '"><title>' + esc(labelFn(x)) + ': ' + usd(x.revenue) + ' (' + x.orders + ' طلب)</title></rect>';
+        });
+        return '<svg viewBox="0 0 400 ' + H + '" preserveAspectRatio="none" width="100%" height="' + H + '" xmlns="http://www.w3.org/2000/svg">' + g + '</svg>';
+    }
+
+    function timePanel(d) {
+        var hours = d.by_hour, peakH = 0, pv = -1;
+        hours.forEach(function (x) { if (x.revenue > pv) { pv = x.revenue; peakH = x.h; } });
+        var wd = WD_ORDER.map(function (i) { var x = d.by_weekday[i]; return { name: WD_NAMES[i], orders: x.orders, revenue: x.revenue }; });
+        var peakD = null, pd = -1; wd.forEach(function (x) { if (x.revenue > pd) { pd = x.revenue; peakD = x; } });
+        var hasData = pv > 0;
+        var wdLabels = '<div style="display:flex; justify-content:space-between; font-size:.64rem; color:var(--muted); font-weight:700; margin-top:4px;">' + wd.map(function (x) { return '<span>' + x.name + '</span>'; }).join('') + '</div>';
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('clock') + 'أوقات ذروة الـ API</h3>' + (hasData ? '<small>أعلى مبيعات الساعة ' + String(peakH).padStart(2, '0') + ':00 ويوم ' + esc(peakD.name) + '</small>' : '') + '</div>' +
+            '<div class="inv-sub-h">' + ico('zap') + 'حسب ساعات اليوم (0 - 23)</div><div dir="ltr">' + mini(hours, function (x) { return String(x.h).padStart(2, '0') + ':00'; }, function (x) { return x.revenue; }, '#e8c26a') + '</div>' +
+            '<div class="inv-sub-h">' + ico('calendar-days') + 'حسب أيام الأسبوع</div><div dir="rtl">' + mini(wd.slice().reverse(), function (x) { return x.name; }, function (x) { return x.revenue; }, '#60a5fa') + wdLabels + '</div></div>';
+    }
+
+    function statusPanel(d) {
+        var s = d.summary;
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('receipt') + 'جرد حالات طلبات الـ API</h3><small>' + s.orders + ' طلب بالفترة</small></div><div class="inv-tiles">' +
+            '<div class="inv-tile"><b class="inv-pos">' + s.done + '</b><span>ناجحة</span></div>' +
+            '<div class="inv-tile"><b style="color:#fbbf24;">' + s.pending + '</b><span>قيد الانتظار / التشيك</span></div>' +
+            '<div class="inv-tile"><b class="inv-neg">' + s.rejected + '</b><span>مرفوضة</span></div>' +
+            '<div class="inv-tile"><b>' + usd(s.pending_amount) + '</b><span>مبالغ معلّقة</span></div>' +
+            '<div class="inv-tile"><b>' + fmt(s.qty).replace('.00', '') + '</b><span>إجمالي الكميات المباعة</span></div>' +
+            '<div class="inv-tile"><b>' + (s.orders ? pct(s.done / s.orders * 100) : '0.0%') + '</b><span>نسبة نجاح الطلبات</span></div></div></div>';
+    }
+
+    function recentPanel(d) {
+        var rows = d.recent_orders.length ? d.recent_orders.map(function (o) {
+            var pr = o.cost != null && o.k === 'done' ? o.price - o.cost : null;
+            return '<div class="aiv-ord"><div><span style="direction:ltr; display:inline-block;">' + esc(o.email) + '</span><em>' + esc(o.product) + ' - ' + esc(o.sub) + '</em></div>' +
+                '<div class="num">' + usd(o.price) + (pr != null ? '<em class="' + cls(pr) + '">ربح ' + usd(pr) + '</em>' : '') + '</div>' +
+                '<div><span class="ord-badge ' + (o.k === 'done' ? 'done' : (o.k === 'rejected' ? 'rejected' : 'pending')) + '">' + ORD_LBL[o.k] + '</span></div>' +
+                '<div class="num inv-dim">' + esc(o.date) + '<em>' + esc(o.time) + '</em></div></div>';
+        }).join('') : '<div class="ord-empty" style="padding:24px 10px;">' + ico('inbox') + '<div>لا توجد طلبات API بعد</div></div>';
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('activity') + 'آخر طلبات الـ API</h3><small>آخر 20 طلب</small></div>' + rows + '</div>';
+    }
+
+    /* ---------- جدول العملاء ---------- */
+    function clientsShell() {
+        var sorts = [['p_revenue', 'الأعلى مبيعات بالفترة'], ['p_profit', 'الأعلى ربحاً بالفترة'], ['revenue', 'الأعلى مبيعات إجمالاً'], ['orders', 'الأكثر طلبات'], ['balance', 'الأعلى رصيداً'], ['last', 'الأحدث نشاطاً'], ['join', 'الأحدث تسجيلاً']];
+        var filters = [['all', 'الكل'], ['active', 'نشطين'], ['dormant', 'خاملين'], ['never', 'ما استخدموا'], ['disabled', 'موقوفين']];
+        return '<div class="inv-card"><div class="inv-card-t"><h3>' + ico('users') + 'جرد كل عميل API</h3><small id="aivClCount"></small></div>' +
+            '<div class="aiv-tools"><div class="ord-search">' + ico('search') + '<input type="text" id="aivSearch" placeholder="ابحث بالإيميل أو الرقم أو الهاتف..." autocomplete="off"></div>' +
+            '<select class="aiv-sel" id="aivFilter">' + filters.map(function (f) { return '<option value="' + f[0] + '">' + f[1] + '</option>'; }).join('') + '</select>' +
+            '<select class="aiv-sel" id="aivSort">' + sorts.map(function (f) { return '<option value="' + f[0] + '">' + f[1] + '</option>'; }).join('') + '</select></div>' +
+            '<div class="inv-scroll"><div class="aiv-tbl" id="aivClients"></div></div><div class="aiv-more" id="aivMore"></div></div>';
+    }
+
+    function clientRow(c) {
+        var ini = esc((c.email || '?').charAt(0).toUpperCase());
+        var last = c.last_date ? (c.last_date + (c.days_since != null ? '<small class="inv-dim" style="display:block; font-size:.66rem;">قبل ' + c.days_since + ' يوم</small>' : '')) : '-';
+        var open = AIV.open === c.email;
+        var h = '<div class="aiv-tr row' + (open ? ' open' : '') + '" data-email="' + esc(c.email) + '">' +
+            '<div class="aiv-cl"><div class="aiv-av">' + ini + '</div><div class="aiv-cl-t"><b>' + esc(c.email) + '</b><small>#' + esc(c.id) + (c.phone ? ' - ' + esc(c.phone) : '') + '</small></div></div>' +
+            '<div><span class="aiv-st ' + c.state + '">' + ico(STATE_ICO[c.state]) + STATE_LBL[c.state] + '</span></div>' +
+            '<div class="num">' + c.p_orders + '</div>' +
+            '<div class="num ' + (c.orders >= 5 && c.success < 70 ? 'inv-neg' : '') + '">' + (c.orders ? pct(c.success) : '-') + '</div>' +
+            '<div class="num">' + usd(c.p_revenue) + '</div>' +
+            '<div class="num ' + cls(c.p_profit) + '">' + usd(c.p_profit) + '</div>' +
+            '<div class="num">' + usd(c.balance) + '</div>' +
+            '<div class="num">' + last + '</div>' +
+            '<div><button class="aiv-tg ' + (c.enabled ? 'off' : 'on') + '" data-tg="' + esc(c.email) + '" data-en="' + (c.enabled ? '0' : '1') + '">' + (c.enabled ? 'إيقاف' : 'تفعيل') + '</button></div></div>';
+        if (open) {
+            var tp = c.top_products.length ? c.top_products.map(function (p) { return '<span class="inv-pill">' + esc(p.name) + ' - ' + usd(p.revenue) + ' (' + p.orders + ')</span>'; }).join('') : '<span class="inv-dim" style="font-size:.74rem;">لا توجد مبيعات ناجحة</span>';
+            var ro = c.recent.length ? c.recent.map(function (o) {
+                return '<div class="aiv-ord"><div>' + esc(o.product) + ' - ' + esc(o.sub) + '<em>' + esc(o.input) + '</em></div><div class="num">' + usd(o.price) + '</div>' +
+                    '<div><span class="ord-badge ' + (o.k === 'done' ? 'done' : (o.k === 'rejected' ? 'rejected' : 'pending')) + '">' + ORD_LBL[o.k] + '</span></div><div class="num inv-dim">' + esc(o.date) + '<em>' + esc(o.time) + '</em></div></div>';
+            }).join('') : '<div class="inv-dim" style="font-size:.74rem;">لا توجد طلبات API</div>';
+            var t = function (v, l) { return '<div class="inv-tile"><b>' + v + '</b><span>' + l + '</span></div>'; };
+            h += '<div class="aiv-detail">' +
+                '<div class="aiv-dtiles">' +
+                t(c.orders, 'إجمالي طلبات API') + t('<span class="inv-pos">' + c.done + '</span>', 'ناجحة') + t('<span class="inv-neg">' + c.rejected + '</span>', 'مرفوضة') + t('<span style="color:#fbbf24;">' + c.pending + '</span>', 'قيد الانتظار') +
+                t(usd(c.revenue), 'إجمالي مبيعاته') + t('<span class="' + cls(c.profit) + '">' + usd(c.profit) + '</span>', 'إجمالي ربحك منه') + t(pct(c.margin), 'هامش الربح') + t(usd(c.cost), 'كلفتك عليه') +
+                t(usd(c.rev7), 'مبيعات 7 أيام') + t(usd(c.rev30), 'مبيعات 30 يوم') + t(c.orders_today, 'طلبات اليوم') + t(fmt(c.qty).replace('.00', ''), 'إجمالي الكميات') +
+                t(esc(c.join_date || '-'), 'تاريخ الانضمام') + t(esc(c.first_date || '-'), 'أول طلب API') + t(c.discount ? c.discount + '%' : '0%', 'نسبة الخصم') + t('<span style="font-size:.8rem;">' + esc(c.token || '-') + '</span>', 'توكن الـ API (مخفي)') +
+                '</div>' +
+                '<div class="inv-sub-h">' + ico('trophy') + 'أكثر المنتجات التي يشتريها</div><div class="inv-chips">' + tp + '</div>' +
+                '<div class="inv-sub-h">' + ico('receipt') + 'آخر طلباته</div><div>' + ro + '</div></div>';
+        }
+        return h;
+    }
+
+    function filteredClients() {
+        var d = AIV.data; if (!d) return [];
+        var q = AIV.q.trim().toLowerCase();
+        var list = d.clients.filter(function (c) {
+            if (AIV.filter !== 'all' && c.state !== AIV.filter) return false;
+            if (!q) return true;
+            return (String(c.email) + ' ' + String(c.id) + ' ' + String(c.phone)).toLowerCase().indexOf(q) !== -1;
+        });
+        var k = AIV.sort;
+        list = list.slice().sort(function (a, b) {
+            if (k === 'last') return String(b.last_date).localeCompare(String(a.last_date));
+            if (k === 'join') return String(b.join_date).localeCompare(String(a.join_date));
+            return (b[k] || 0) - (a[k] || 0);
+        });
+        return list;
+    }
+
+    function renderClients() {
+        var box = $('aivClients'); if (!box || !AIV.data) return;
+        var list = filteredClients();
+        var shown = list.slice(0, AIV.limit);
+        var head = '<div class="aiv-tr head"><div>العميل</div><div>الحالة</div><div>طلبات الفترة</div><div>نجاح الطلبات</div><div>مبيعات الفترة</div><div>ربح الفترة</div><div>الرصيد</div><div>آخر طلب</div><div>إجراء</div></div>';
+        box.innerHTML = head + (shown.length ? shown.map(clientRow).join('') : '<div class="ord-empty" style="padding:28px 10px;">' + ico('inbox') + '<div>لا يوجد عملاء مطابقين</div></div>');
+        $('aivClCount').textContent = list.length + ' من ' + AIV.data.clients_total + ' عميل';
+        var more = $('aivMore');
+        more.innerHTML = list.length > shown.length ? '<button class="ord-btn" id="aivShowMore">' + ico('chevron') + '<span>عرض المزيد (' + (list.length - shown.length) + ')</span></button>' : '';
+    }
+
+    function render() {
+        var d = AIV.data; if (!d) return;
+        var rg = d.range;
+        $('aivRangeLabel').innerHTML = ico('calendar') + ' ' + esc(RANGE_NAMES[AIV.range] + (rg.from ? ' (' + rg.from + ' ← ' + rg.to + ')' : ''));
+        $('aivGenerated').textContent = 'آخر تحديث: ' + d.generated;
+        var html = kpis(d) + note(d) + sharePanel(d) + clientsStatsPanel(d) + alertsPanel(d) + periodsTable(d) + chartCard(d) + clientsShell() +
+            '<div class="inv-grid">' +
+            listPanel('أفضل المنتجات مبيعاً عبر الـ API', 'trophy', d.by_product,
+                function (x) { return esc(x.name); },
+                function (x) { return '<span>' + x.orders + ' طلب / ' + fmt(x.qty).replace('.00', '') + ' كمية</span><span class="' + cls(x.profit) + '">ربح ' + usd(x.profit) + '</span>'; }, 'لا توجد مبيعات بهذه الفترة') +
+            listPanel('أفضل الفئات مبيعاً عبر الـ API', 'tag', d.by_sub,
+                function (x) { return esc(x.name) + '<em>' + esc(x.product) + '</em>'; },
+                function (x) { return '<span>' + x.orders + ' طلب / ' + fmt(x.qty).replace('.00', '') + ' كمية</span><span class="' + cls(x.profit) + '">ربح ' + usd(x.profit) + '</span>'; }, 'لا توجد مبيعات بهذه الفترة') +
+            listPanel('المزودون خلف طلبات الـ API', 'server', d.by_provider,
+                function (x) { return esc(x.name); },
+                function (x) { return '<span>' + x.orders + ' طلب</span><span class="' + cls(x.profit) + '">ربح ' + usd(x.profit) + '</span>'; }, 'لا توجد بيانات') +
+            timePanel(d) + statusPanel(d) + recentPanel(d) + '</div>' +
+            '<div class="inv-foot">طلبات الـ API هي الطلبات القادمة من عملائك عبر رابط الـ API. الربح = سعر البيع - كلفة المزود. الطلبات المرفوضة لا تدخل بالمبيعات لأن مبلغها يرجع للعميل. التوكن يظهر مخفي حفاظاً على أمان حسابات العملاء.</div>';
+        $('aivBody').innerHTML = html;
+        $('aivSearch').value = AIV.q; $('aivFilter').value = AIV.filter; $('aivSort').value = AIV.sort;
+        renderClients();
+    }
+
+    window.aivReload = function () { AIV.busy = false; AIV.limit = 60; load(); };
+
+    window.openApiInvScreen = function () {
+        if (typeof window.toggleSidebar === 'function') window.toggleSidebar();
+        ['adminMainSection', 'checkOrdersPage', 'checkDepositsPage', 'viewProvidersPage', 'deleteCategoryPage', 'deleteProductPage'].forEach(function (id) {
+            var el = $(id); if (el) el.style.display = 'none';
+        });
+        ['clientsListScreen', 'apiImportScreen', 'allOrdersScreen', 'inventoryScreen'].forEach(function (id) {
+            var el = $(id); if (el) el.classList.remove('active');
+        });
+        $('apiInvScreen').classList.add('active');
+        $('apiInvScreen').scrollTop = 0;
+        AIV.busy = false; AIV.limit = 60; AIV.open = '';
+        loadLink();
+        load();
+    };
+    window.closeApiInvScreen = function () {
+        $('apiInvScreen').classList.remove('active');
+        var m = $('adminMainSection'); if (m) m.style.display = 'block';
+    };
+
+    var chips = $('aivChips');
+    if (chips) chips.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('.ord-chip') : null;
+        if (!b) return;
+        AIV.range = b.getAttribute('data-r'); AIV.busy = false; AIV.limit = 60;
+        load();
+    });
+
+    var eps = $('aivEndpoints');
+    if (eps) eps.addEventListener('click', function (e) {
+        var b = e.target.closest ? e.target.closest('button[data-ep]') : null;
+        if (!b || !eps._eps) return;
+        copyText(eps._eps[parseInt(b.getAttribute('data-ep'), 10)][1], 'تم نسخ الرابط');
+    });
+
+    $('aivBody').addEventListener('click', async function (e) {
+        var t = e.target;
+        var tab = t.closest ? t.closest('#aivChartTabs .ord-chip') : null;
+        if (tab && AIV.data) {
+            AIV.chart = tab.getAttribute('data-c');
+            var tabs = document.querySelectorAll('#aivChartTabs .ord-chip');
+            for (var i = 0; i < tabs.length; i++) { tabs[i].classList.toggle('active', tabs[i] === tab); }
+            $('aivChartBox').innerHTML = chartSvg(AIV.data.series[AIV.chart]);
+            return;
+        }
+        if (t.closest && t.closest('#aivShowMore')) { AIV.limit += 60; renderClients(); return; }
+        var tg = t.closest ? t.closest('button[data-tg]') : null;
+        if (tg) {
+            var em = tg.getAttribute('data-tg'), en = tg.getAttribute('data-en') === '1';
+            if (!confirm((en ? 'تفعيل' : 'إيقاف') + ' الـ API للعميل ' + em + ' ؟')) return;
+            try {
+                var res = await fetch('/api/toggle_user_api', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em, enabled: en }) });
+                var j = await res.json();
+                if (j && j.status === 'success') { toast(en ? 'تم تفعيل الـ API للعميل' : 'تم إيقاف الـ API للعميل'); AIV.busy = false; load(); }
+                else { toast((j && j.message) || 'تعذر تنفيذ العملية', 'x-circle'); }
+            } catch (err) { toast('فشل الاتصال بالخادم', 'x-circle'); }
+            return;
+        }
+        var row = t.closest ? t.closest('.aiv-tr.row') : null;
+        if (row) {
+            var email = row.getAttribute('data-email');
+            AIV.open = (AIV.open === email) ? '' : email;
+            renderClients();
+        }
+    });
+    $('aivBody').addEventListener('input', function (e) {
+        if (e.target && e.target.id === 'aivSearch') { AIV.q = e.target.value; AIV.limit = 60; renderClients(); }
+    });
+    $('aivBody').addEventListener('change', function (e) {
+        if (!e.target) return;
+        if (e.target.id === 'aivFilter') { AIV.filter = e.target.value; AIV.limit = 60; renderClients(); }
+        else if (e.target.id === 'aivSort') { AIV.sort = e.target.value; AIV.limit = 60; renderClients(); }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && $('apiInvScreen').classList.contains('active')) window.closeApiInvScreen();
+    });
 })();
 </script>
 </body>
@@ -17520,6 +18162,382 @@ def build_inventory_report(date_from=None, date_to=None, range_key=None):
 
 
 # --------------------------------------------------
+# جرد عملائي API: لوحة شاملة لعملاء الـ API + رابط الـ API القابل للتغيير
+# --------------------------------------------------
+API_LINK_FILE = "api_link_settings.json"
+API_LINK_DATA = load_json_file(API_LINK_FILE, {})
+if not isinstance(API_LINK_DATA, dict):
+    API_LINK_DATA = {}
+API_LINK_LOCK = threading.Lock()
+API_LINK_DEFAULT = f"{SITE_BASE_URL}/client/api"
+
+
+def get_api_link():
+    """رابط الـ API الذي يظهر للعملاء (القابل للتعديل من لوحة جرد عملائي Api)."""
+    v = str(API_LINK_DATA.get("url") or "").strip().rstrip("/")
+    return v or API_LINK_DEFAULT
+
+
+def api_link_info():
+    return {
+        "status": "success",
+        "url": get_api_link(),
+        "default": API_LINK_DEFAULT,
+        "is_default": not str(API_LINK_DATA.get("url") or "").strip(),
+        "updated": API_LINK_DATA.get("updated") or "",
+    }
+
+
+def api_link_save(d):
+    d = d if isinstance(d, dict) else {}
+    raw = str(d.get("url") or "").strip()
+    new = ""
+    if raw and not d.get("reset"):
+        if len(raw) > 300 or any(ch.isspace() for ch in raw):
+            return {"status": "error", "message": "الرابط غير صالح (لا تضع مسافات)"}
+        p = urllib.parse.urlparse(raw)
+        if p.scheme not in ("http", "https") or not p.netloc:
+            return {"status": "error", "message": "الرابط لازم يبدأ بـ http:// أو https://"}
+        new = raw.rstrip("/")
+    with API_LINK_LOCK:
+        if new:
+            API_LINK_DATA["url"] = new
+        else:
+            API_LINK_DATA.pop("url", None)
+        API_LINK_DATA["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        save_json_file(API_LINK_FILE, API_LINK_DATA)
+    res = api_link_info()
+    res["message"] = "تم حفظ رابط الـ API" if new else "تمت إعادة الرابط الافتراضي"
+    return res
+
+
+def _aci_mask(tok):
+    tok = str(tok or "")
+    if not tok:
+        return ""
+    if len(tok) <= 8:
+        return "*" * len(tok)
+    return tok[:4] + "********" + tok[-4:]
+
+
+def build_api_clients_inventory(date_from=None, date_to=None, range_key=None):
+    today = datetime.now().date()
+    with DATA_LOCK:
+        orders_all = list(ORDERS_DATA)
+        users = dict(USERS_DATA)
+        subs = list(SUBCATEGORIES_DATA)
+
+    sub_index = {}
+    for s_ in subs:
+        sub_index.setdefault((s_.get('product'), s_.get('name')), []).append(s_)
+
+    def is_api(o):
+        return str(o.get('order_source') or '').strip().lower() == 'api'
+
+    all_recs, api_recs, api_pairs = [], [], []
+    for o in orders_all:
+        r = _inv_order_record(o, sub_index)
+        if r is None:
+            continue
+        all_recs.append(r)
+        if is_api(o):
+            api_recs.append(r)
+            api_pairs.append((o, r))
+
+    fr = _inv_date(date_from) if date_from else None
+    to = _inv_date(date_to) if date_to else None
+    if fr and to and fr > to:
+        fr, to = to, fr
+
+    m_start = today.replace(day=1)
+    prev_m_end = m_start - _inv_timedelta(days=1)
+    prev_m_start = prev_m_end.replace(day=1)
+    one = _inv_timedelta(days=1)
+    periods_def = [
+        ('today', 'اليوم', today, today),
+        ('yesterday', 'أمس', today - one, today - one),
+        ('week', 'آخر 7 أيام', today - _inv_timedelta(days=6), today),
+        ('prev_week', 'الأسبوع الذي قبله', today - _inv_timedelta(days=13), today - _inv_timedelta(days=7)),
+        ('month', 'هذا الشهر', m_start, today),
+        ('prev_month', 'الشهر الماضي', prev_m_start, prev_m_end),
+        ('last30', 'آخر 30 يوم', today - _inv_timedelta(days=29), today),
+        ('year', 'هذه السنة', today.replace(month=1, day=1), today),
+        ('all', 'الإجمالي', None, None),
+    ]
+    periods = []
+    for key, label, s, e in periods_def:
+        a = _inv_agg(api_recs, [], [], s, e)
+        a['key'] = key
+        a['label'] = label
+        periods.append(a)
+
+    if range_key:
+        for key_, _lb, s_, e_ in periods_def:
+            if key_ == range_key:
+                fr, to = s_, e_
+    summary = _inv_agg(api_recs, [], [], fr, to)
+    all_summary = _inv_agg(all_recs, [], [], fr, to)
+    prev = None
+    if fr and to:
+        span = (to - fr).days + 1
+        prev = _inv_agg(api_recs, [], [], fr - _inv_timedelta(days=span), fr - one)
+
+    def inside(d):
+        return (fr is None or d >= fr) and (to is None or d <= to)
+
+    sel = [x for x in api_recs if inside(x['d'])]
+    done = [x for x in sel if x['k'] == 'done']
+
+    def group(key_fn, limit=12):
+        g = {}
+        for x in done:
+            kk = key_fn(x)
+            e = g.setdefault(kk, {'name': kk if isinstance(kk, str) else kk[0], 'orders': 0, 'qty': 0.0,
+                                  'revenue': 0.0, 'profit': 0.0})
+            e['orders'] += 1
+            e['qty'] += x['qty']
+            e['revenue'] += x['price']
+            if x['profit'] is not None:
+                e['profit'] += x['profit']
+        out = sorted(g.values(), key=lambda v: v['revenue'], reverse=True)[:limit]
+        for v in out:
+            v['revenue'] = round(v['revenue'], 6)
+            v['profit'] = round(v['profit'], 6)
+            v['qty'] = round(v['qty'], 4)
+        return out
+
+    by_product = group(lambda x: x['product'], 12)
+    by_provider = group(lambda x: x['provider'] or 'بدون مزود', 10)
+
+    gsub = {}
+    for x in done:
+        kk = (x['product'], x['sub'])
+        e = gsub.setdefault(kk, {'product': x['product'], 'name': x['sub'], 'orders': 0, 'qty': 0.0,
+                                 'revenue': 0.0, 'profit': 0.0})
+        e['orders'] += 1
+        e['qty'] += x['qty']
+        e['revenue'] += x['price']
+        if x['profit'] is not None:
+            e['profit'] += x['profit']
+    by_sub = sorted(gsub.values(), key=lambda v: v['revenue'], reverse=True)[:12]
+    for v in by_sub:
+        v['revenue'] = round(v['revenue'], 6)
+        v['profit'] = round(v['profit'], 6)
+        v['qty'] = round(v['qty'], 4)
+
+    by_hour = [{'h': h, 'orders': 0, 'revenue': 0.0} for h in range(24)]
+    by_wd = [{'wd': w, 'orders': 0, 'revenue': 0.0} for w in range(7)]
+    for x in done:
+        hh = by_hour[x['hour'] if 0 <= x['hour'] < 24 else 0]
+        hh['orders'] += 1
+        hh['revenue'] += x['price']
+        ww = by_wd[x['d'].weekday()]
+        ww['orders'] += 1
+        ww['revenue'] += x['price']
+    for v in by_hour + by_wd:
+        v['revenue'] = round(v['revenue'], 6)
+
+    def series_range(pairs, labels):
+        out = []
+        for (s, e), lb in zip(pairs, labels):
+            a = _inv_agg(api_recs, [], [], s, e)
+            out.append({'label': lb, 'revenue': a['revenue'], 'profit': a['profit'],
+                        'orders': a['done'], 'dep': 0})
+        return out
+
+    day_pairs, day_labels = [], []
+    for i in range(29, -1, -1):
+        d = today - _inv_timedelta(days=i)
+        day_pairs.append((d, d))
+        day_labels.append(d.strftime("%m-%d"))
+    week_pairs, week_labels = [], []
+    for i in range(11, -1, -1):
+        e = today - _inv_timedelta(days=7 * i)
+        s = e - _inv_timedelta(days=6)
+        week_pairs.append((s, e))
+        week_labels.append(s.strftime("%m-%d"))
+    month_pairs, month_labels = [], []
+    y, m = today.year, today.month
+    ym = []
+    for _ in range(12):
+        ym.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    for (yy, mm) in reversed(ym):
+        s = datetime(yy, mm, 1).date()
+        nm = datetime(yy + (1 if mm == 12 else 0), 1 if mm == 12 else mm + 1, 1).date()
+        month_pairs.append((s, nm - one))
+        month_labels.append("%04d-%02d" % (yy, mm))
+    series = {
+        'daily': series_range(day_pairs, day_labels),
+        'weekly': series_range(week_pairs, week_labels),
+        'monthly': series_range(month_pairs, month_labels),
+    }
+
+    # ---------------- جرد كل عميل API ----------------
+    def new_client(email, u):
+        return {
+            'email': email, 'id': u.get('id', ''), 'phone': u.get('phone', '') or '',
+            'name': u.get('name') or u.get('full_name') or '',
+            'enabled': bool(u.get('api_enabled', False)),
+            'token': _aci_mask(u.get('api_token')),
+            'balance': round(_num(u.get('balance', 0)), 6),
+            'discount': _num(u.get('discount_percentage', 0)),
+            'join_date': str(u.get('join_date') or '')[:10],
+            'orders': 0, 'done': 0, 'rejected': 0, 'pending': 0,
+            'revenue': 0.0, 'cost': 0.0, 'profit': 0.0, 'qty': 0.0,
+            'p_orders': 0, 'p_done': 0, 'p_revenue': 0.0, 'p_profit': 0.0,
+            'rev7': 0.0, 'rev30': 0.0, 'orders_today': 0,
+            'first_date': '', 'last_date': '', 'last_time': '',
+            '_prod': {}, 'recent': [],
+        }
+
+    clients = {}
+    for email, u in users.items():
+        if u.get('api_enabled', False):
+            clients[email] = new_client(email, u)
+
+    d7 = today - _inv_timedelta(days=6)
+    d30 = today - _inv_timedelta(days=29)
+    for o, r in sorted(api_pairs, key=lambda t: (str(t[0].get('date') or ''), str(t[0].get('time') or ''))):
+        email = o.get('email') or '-'
+        c = clients.get(email)
+        if c is None:
+            c = clients[email] = new_client(email, users.get(email, {}))
+        c['orders'] += 1
+        c[r['k']] += 1
+        ds = r['d'].isoformat()
+        if not c['first_date'] or ds < c['first_date']:
+            c['first_date'] = ds
+        if ds >= c['last_date']:
+            c['last_date'] = ds
+            c['last_time'] = str(o.get('time') or '')[:8]
+        if r['d'] == today:
+            c['orders_today'] += 1
+        if r['k'] == 'done':
+            c['revenue'] += r['price']
+            c['qty'] += r['qty']
+            if r['cost'] is not None:
+                c['cost'] += r['cost']
+                c['profit'] += r['price'] - r['cost']
+            if r['d'] >= d7:
+                c['rev7'] += r['price']
+            if r['d'] >= d30:
+                c['rev30'] += r['price']
+            pe = c['_prod'].setdefault(r['product'], {'name': r['product'], 'orders': 0, 'revenue': 0.0})
+            pe['orders'] += 1
+            pe['revenue'] += r['price']
+        if inside(r['d']):
+            c['p_orders'] += 1
+            if r['k'] == 'done':
+                c['p_done'] += 1
+                c['p_revenue'] += r['price']
+                if r['profit'] is not None:
+                    c['p_profit'] += r['profit']
+        c['recent'].append({
+            'id': o.get('id'), 'uuid': str(o.get('order_uuid') or '')[:14], 'product': r['product'], 'sub': r['sub'],
+            'price': round(r['price'], 6), 'k': r['k'], 'date': ds, 'time': str(o.get('time') or '')[:8],
+            'qty': r['qty'], 'input': str(o.get('input') or '')[:40],
+        })
+        if len(c['recent']) > 6:
+            c['recent'].pop(0)
+
+    never, dormant, active30, high_reject, idle_bal, low_bal, disabled_used = [], [], 0, [], [], [], []
+    out_clients = []
+    for c in clients.values():
+        if c['orders'] == 0:
+            c['state'] = 'never' if c['enabled'] else 'disabled'
+        elif not c['enabled']:
+            c['state'] = 'disabled'
+        else:
+            ld = _inv_date(c['last_date'])
+            c['days_since'] = (today - ld).days if ld else None
+            c['state'] = 'active' if (c['days_since'] is not None and c['days_since'] <= 30) else 'dormant'
+        if 'days_since' not in c:
+            c['days_since'] = None
+        c['success'] = round(c['done'] / c['orders'] * 100.0, 1) if c['orders'] else 0.0
+        c['margin'] = round(c['profit'] / c['revenue'] * 100.0, 1) if c['revenue'] > 0 and c['profit'] else 0.0
+        c['top_products'] = sorted(c['_prod'].values(), key=lambda v: v['revenue'], reverse=True)[:3]
+        for v in c['top_products']:
+            v['revenue'] = round(v['revenue'], 6)
+        c.pop('_prod', None)
+        c['recent'] = list(reversed(c['recent']))
+        for k_ in ('revenue', 'cost', 'profit', 'qty', 'p_revenue', 'p_profit', 'rev7', 'rev30'):
+            c[k_] = round(c[k_], 6)
+        st = c['state']
+        if st == 'never':
+            never.append({'email': c['email'], 'balance': c['balance']})
+        elif st == 'dormant':
+            dormant.append({'email': c['email'], 'days': c['days_since'], 'revenue': c['revenue'], 'balance': c['balance']})
+            if c['balance'] > 0:
+                idle_bal.append({'email': c['email'], 'balance': c['balance'], 'days': c['days_since']})
+        elif st == 'active':
+            active30 += 1
+            if c['balance'] < 1:
+                low_bal.append({'email': c['email'], 'balance': c['balance'], 'rev30': c['rev30']})
+        if c['enabled'] and c['orders'] >= 5 and (c['rejected'] / c['orders']) >= 0.3:
+            high_reject.append({'email': c['email'], 'orders': c['orders'], 'rejected': c['rejected'],
+                                'rate': round(c['rejected'] / c['orders'] * 100.0, 1)})
+        if st == 'disabled' and c['orders'] > 0:
+            disabled_used.append({'email': c['email'], 'orders': c['orders'], 'revenue': c['revenue']})
+        out_clients.append(c)
+
+    out_clients.sort(key=lambda v: (v['p_revenue'], v['revenue']), reverse=True)
+    dormant.sort(key=lambda v: v['days'] or 0, reverse=True)
+    idle_bal.sort(key=lambda v: v['balance'], reverse=True)
+    low_bal.sort(key=lambda v: v['rev30'], reverse=True)
+    high_reject.sort(key=lambda v: v['rate'], reverse=True)
+    never.sort(key=lambda v: v['balance'], reverse=True)
+
+    enabled_n = sum(1 for c in out_clients if c['enabled'])
+    active_period = len(set(c['email'] for c in out_clients if c['enabled'] and c['p_done'] > 0))
+    conc = None
+    tot_p = sum(c['p_revenue'] for c in out_clients)
+    if tot_p > 0 and out_clients:
+        top3 = sorted((c['p_revenue'] for c in out_clients), reverse=True)[:3]
+        conc = round(sum(top3) / tot_p * 100.0, 1)
+
+    recent_orders = []
+    for o, r in sorted(api_pairs, key=lambda t: (str(t[0].get('date') or ''), str(t[0].get('time') or '')), reverse=True)[:20]:
+        recent_orders.append({
+            'id': o.get('id'), 'email': o.get('email') or '-', 'product': r['product'], 'sub': r['sub'],
+            'price': round(r['price'], 6), 'cost': (round(r['cost'], 6) if r['cost'] is not None else None),
+            'k': r['k'], 'date': r['d'].isoformat(), 'time': str(o.get('time') or '')[:8],
+            'qty': r['qty'], 'provider': r['provider'],
+        })
+
+    return {
+        'generated': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'range': {'from': fr.isoformat() if fr else None, 'to': to.isoformat() if to else None},
+        'link': api_link_info(),
+        'summary': summary, 'prev': prev, 'periods': periods, 'series': series,
+        'by_product': by_product, 'by_sub': by_sub, 'by_provider': by_provider,
+        'by_hour': by_hour, 'by_weekday': by_wd,
+        'share': {
+            'api_revenue': summary['revenue'], 'site_revenue': round(all_summary['revenue'] - summary['revenue'], 6),
+            'api_orders': summary['done'], 'site_orders': all_summary['done'] - summary['done'],
+            'api_profit': summary['profit'], 'site_profit': round(all_summary['profit'] - summary['profit'], 6),
+            'api_pct': round(summary['revenue'] / all_summary['revenue'] * 100.0, 1) if all_summary['revenue'] > 0 else 0.0,
+        },
+        'clients_stats': {
+            'total_users': len(users), 'enabled': enabled_n, 'disabled_with_orders': len(disabled_used),
+            'active_period': active_period, 'active30': active30, 'dormant': len(dormant), 'never': len(never),
+            'adoption': round(enabled_n / len(users) * 100.0, 1) if users else 0.0,
+            'balance_enabled': round(sum(c['balance'] for c in out_clients if c['enabled']), 6),
+            'concentration_top3': conc,
+        },
+        'alerts': {
+            'never': never[:15], 'dormant': dormant[:15], 'high_reject': high_reject[:15],
+            'idle_balance': idle_bal[:15], 'low_balance': low_bal[:15], 'disabled_used': disabled_used[:15],
+        },
+        'clients': out_clients[:600], 'clients_total': len(out_clients),
+        'recent_orders': recent_orders,
+    }
+
+
+# --------------------------------------------------
 # منطق الشراء المشترك (الموقع + بوت التلغرام)
 # السعر يُحسب دائماً على السيرفر ولا يُصدَّق السعر القادم من المتصفح
 # --------------------------------------------------
@@ -18067,6 +19085,8 @@ ADMIN_PATH_PERMS = {
     # GET
     "/api/admin_stats": "stats",
     "/api/inventory_report": "products",
+    "/api/api_clients_inventory": ("api", "clients"),
+    "/api/get_api_link_settings": ("api", "clients"),
     "/api/get_deposit_requests": "deposits",
     "/api/get_all_orders": "orders",
     "/api/imported_sections": ("products", "api"),
@@ -18110,6 +19130,7 @@ ADMIN_PATH_PERMS = {
     "/api/remove_client_discount": "clients",
     "/api/inspect_client": "clients",
     "/api/toggle_user_api": "clients",
+    "/api/save_api_link_settings": "api",
     "/api/process_product_order": "orders",
     "/api/process_deposit_request": "deposits",
     "/api/add_deposit_method": "deposits",
@@ -18144,6 +19165,7 @@ ADMIN_ACTION_LABELS = {
     "/api/update_about_us": "تعديل من نحن",
     "/api/update_support_settings": "تعديل إعدادات الدعم",
     "/api/update_logo_settings": "تعديل اللوغو",
+    "/api/save_api_link_settings": "تعديل رابط الـ API",
     "/api/update_google_settings": "ضبط تسجيل جوجل",
     "/api/update_banner_shine": "تعديل لمعان البنر",
     "/api/update_ticker_settings": "تعديل الشريط العلوي",
@@ -19590,6 +20612,19 @@ self.addEventListener('fetch', event => {
             self.end_headers()
             self.wfile.write(json.dumps(APPEARANCE_DATA, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path.startswith("/api/api_clients_inventory"):
+            q_ = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            try:
+                report = build_api_clients_inventory(
+                    q_.get('from', [None])[0], q_.get('to', [None])[0], q_.get('range', [None])[0])
+                self._reply_json(report)
+            except Exception as e_:
+                logging.error(f"خطأ بجرد عملاء الـ API: {e_}")
+                self._reply_json({"status": "error", "message": str(e_)}, 500)
+
+        elif self.path.startswith("/api/get_api_link_settings"):
+            self._reply_json(api_link_info())
+
         elif self.path.startswith("/api/inventory_report"):
             q_ = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             try:
@@ -19659,7 +20694,7 @@ self.addEventListener('fetch', event => {
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(API_DOCS_HTML.encode("utf-8"))
+            self.wfile.write(API_DOCS_HTML.replace(API_LINK_DEFAULT, get_api_link()).encode("utf-8"))
 
         elif self.path.startswith("/client/api/profile"):
             auth_token = self.headers.get('api-token')
@@ -20102,7 +21137,7 @@ self.addEventListener('fetch', event => {
                     "status": "success",
                     "token": token,
                     "enabled": USERS_DATA[email].get('api_enabled', False),
-                    "api_url": f"{SITE_BASE_URL}/client/api"
+                    "api_url": get_api_link()
                 }).encode("utf-8"))
             else:
                 self.send_response(200)
@@ -21224,6 +22259,9 @@ self.addEventListener('fetch', event => {
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "success", "new_balance": new_bal}).encode("utf-8"))
+
+        elif self.path == "/api/save_api_link_settings":
+            self._reply_json(api_link_save(data if isinstance(data, dict) else {}))
 
         elif self.path in ("/api/tg_notify_get", "/api/tg_notify_save"):
             result = tg_notify_admin_action(self.path, data if isinstance(data, dict) else {})
