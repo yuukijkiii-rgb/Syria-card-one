@@ -857,6 +857,24 @@ def make_api_request(url, token, timeout=12):
         return json.loads(response.read().decode('utf-8'))
 
 
+def fetch_provider_replay(order):
+    """يجلب رد المزوّد (replay_api) لطلب API عبر order_uuid. يرجع None إذا ما في رد."""
+    try:
+        if not order.get('api_product_id'):
+            return None
+        provider = next((p for p in PROVIDERS_DATA if p.get('name') == order.get('provider_name')), None)
+        if not provider:
+            return None
+        base = provider.get('url', '').rstrip('/') + '/'
+        check_url = f"{base}client/api/check?orders=[{order.get('order_uuid')}]&uuid=1"
+        res = make_api_request(check_url, provider.get('token'), timeout=8)
+        if res.get('status') == "OK" and res.get('data'):
+            return res['data'][0].get('replay_api') or None
+    except Exception as e:
+        logging.error(f"فشل جلب رد المزوّد للطلب: {e}")
+    return None
+
+
 def _tg_rich_text_for(email, order_uuid, message, status):
     """يبني رسالة تلغرام مفصّلة لقبول/رفض الإيداع أو الطلب (أو نص عادي إن لم يُعرف النوع)."""
     ok = (status == "success")
@@ -3103,6 +3121,14 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .status-accept { color: #4ade80; border-color: #4ade80; background: rgba(74, 222, 128, 0.1); }
         .status-pending { color: #f59e0b; border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
         .status-reject { color: #f87171; border-color: #f87171; background: rgba(248, 113, 113, 0.1); }
+        #orderDetailModal .modal-box { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+        .sys-reply-wrap { margin-top: 6px; }
+        .sys-reply-label { color: var(--subtext-color); font-weight: 600; font-size: 0.8rem; margin-bottom: 6px; display: block; }
+        .sys-reply-box { background: #0b0a1a; border: 1px solid #2e2850; border-radius: 12px; padding: 10px; }
+        .sys-reply-box pre { margin: 0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; unicode-bidi: plaintext; text-align: start; font-family: Consolas, Menlo, monospace; font-size: 0.8rem; line-height: 1.6; color: #e5e7eb; }
+        .sys-reply-actions { direction: ltr; display: flex; justify-content: flex-end; margin-top: 8px; }
+        .sys-reply-copy { background: rgba(218, 165, 32, 0.12); color: #daa520; border: 1px solid #daa520; border-radius: 10px; padding: 6px 18px; font-size: 0.8rem; font-weight: 800; cursor: pointer; }
+        .sys-reply-copy:active { transform: scale(0.95); }
 
         .modal-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -4428,6 +4454,15 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             <div class="order-detail-row">
                 <span class="order-detail-label">حالة الطلب</span>
                 <span class="order-detail-value status-badge" id="detailStatus">-</span>
+            </div>
+            <div class="sys-reply-wrap" id="detailReplyWrap" style="display:none;">
+                <span class="sys-reply-label">رد النظام</span>
+                <div class="sys-reply-box">
+                    <pre id="detailReply"></pre>
+                    <div class="sys-reply-actions">
+                        <button type="button" class="sys-reply-copy" id="detailReplyCopyBtn" onclick="copyOrderReply()">نسخ</button>
+                    </div>
+                </div>
             </div>
             <button class="cancel-btn-outline" style="margin-top:10px; width:100%;" onclick="closeOrderDetailModal()">إغلاق</button>
         </div>
@@ -7302,6 +7337,12 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('detailInput').innerText = order.input || '-';
             document.getElementById('detailQuantity').innerText = order.quantity || '1';
 
+            const replyTxt = getOrderReplyText(order);
+            const replyWrap = document.getElementById('detailReplyWrap');
+            document.getElementById('detailReply').textContent = replyTxt;
+            replyWrap.style.display = replyTxt ? '' : 'none';
+            document.getElementById('detailReplyCopyBtn').textContent = 'نسخ';
+
             const statusEl = document.getElementById('detailStatus');
             let statusText = order.status || 'قيد الانتظار';
             let statusClass = 'status-pending';
@@ -7324,6 +7365,44 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             statusEl.className = 'order-detail-value status-badge ' + statusClass;
 
             document.getElementById('orderDetailModal').classList.add('active');
+        }
+
+        function formatOrderReply(v) {
+            if (v === null || v === undefined || v === '') return '';
+            if (typeof v === 'string') return v;
+            if (Array.isArray(v)) return v.map(formatOrderReply).filter(Boolean).join(String.fromCharCode(10));
+            if (typeof v === 'object') {
+                if ('replay' in v) return formatOrderReply(v.replay);
+                try { return JSON.stringify(v); } catch (e) { return String(v); }
+            }
+            return String(v);
+        }
+
+        // منتج يدوي: الرد اللي كتبه الأدمن | منتج API: الرد اللي رجع من المزوّد
+        function getOrderReplyText(order) {
+            const manual = formatOrderReply(order.admin_reply);
+            if (manual) return manual;
+            return formatOrderReply(order.replay_api);
+        }
+
+        function copyOrderReply() {
+            const txt = document.getElementById('detailReply').textContent || '';
+            if (!txt) return;
+            const btn = document.getElementById('detailReplyCopyBtn');
+            const done = function () {
+                btn.textContent = 'تم النسخ ✓';
+                setTimeout(function () { btn.textContent = 'نسخ'; }, 1500);
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); done(); } catch (e) { }
+                ta.remove();
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(done).catch(fallback);
+            } else { fallback(); }
         }
 
         function closeOrderDetailModal() {
@@ -10778,6 +10857,23 @@ ADMIN_HTML_CONTENT = """
                     <button class="btn-reject" onclick="processOrderDecision('reject')">رفض الطلب</button>
                 </div>
                 <button class="btn-secondary" onclick="closeModal('reviewOrderModal')">إلغاء</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="decideOrderModal" style="z-index:2100;">
+            <div class="modal-box">
+                <div class="modal-title" id="decOrdTitle">-</div>
+                <div class="admin-field-box" id="decOrdSummary">-</div>
+                <div id="decOrdNote" style="display:none; color:#f87171; font-size:0.78rem; font-weight:700;"></div>
+                <div class="form-group">
+                    <label id="decOrdLabel">رد النظام (يظهر للعميل):</label>
+                    <textarea id="decOrdReply" rows="5" placeholder="اكتب الرد اللي بدك يظهر للعميل (اختياري)..." style="width:100%; box-sizing:border-box; padding:10px; background:#000; color:#fff; border:1px solid #27272a; border-radius:10px; font-size:0.85rem; resize:vertical; outline:none; font-family:inherit;"></textarea>
+                    <div class="admin-field-box" id="decOrdApiReply" style="display:none; white-space:pre-wrap; max-height:160px; overflow-y:auto;">-</div>
+                </div>
+                <div class="action-btns-row">
+                    <button class="btn-accept" id="decOrdConfirm" onclick="ckOrderConfirmDecision()">تأكيد</button>
+                    <button class="btn-secondary" style="flex:1;" onclick="closeModal('decideOrderModal')">إلغاء</button>
+                </div>
             </div>
         </div>
 
@@ -15009,29 +15105,74 @@ ADMIN_HTML_CONTENT = """
             ckOrderDecide(o, act);
         }
 
-        async function ckOrderDecide(o, action) {
+        let ckDecision = null;
+
+        function ckFormatReply(v) {
+            if (v === null || v === undefined || v === '') return '';
+            if (typeof v === 'string') return v;
+            if (Array.isArray(v)) return v.map(ckFormatReply).filter(Boolean).join(String.fromCharCode(10));
+            if (typeof v === 'object') {
+                if ('replay' in v) return ckFormatReply(v.replay);
+                try { return JSON.stringify(v); } catch (e) { return String(v); }
+            }
+            return String(v);
+        }
+
+        function ckOrderDecide(o, action) {
             if (ckBusy) return;
-            const msg = action === 'accept'
-                ? 'تأكيد قبول الطلب #' + o.id + ' (' + (o.subcategory || '') + ')؟'
-                : 'تأكيد رفض الطلب #' + o.id + ' وإعادة ' + formatBalance(o.price) + ' $ لحساب العميل؟';
-            if (!confirm(msg)) return;
+            ckDecision = { o: o, action: action };
+            const isApi = !!o.api_product_id;
+            const acc = action === 'accept';
+            document.getElementById('decOrdTitle').textContent = (acc ? 'قبول الطلب #' : 'رفض الطلب #') + o.id;
+            document.getElementById('decOrdSummary').textContent = (o.subcategory || '') + '  |  ' + formatBalance(o.price) + ' $';
+            const note = document.getElementById('decOrdNote');
+            note.textContent = acc ? '' : 'رح يتم إرجاع ' + formatBalance(o.price) + ' $ لرصيد العميل.';
+            note.style.display = acc ? 'none' : '';
+            const ta = document.getElementById('decOrdReply');
+            const apiBox = document.getElementById('decOrdApiReply');
+            if (isApi) {
+                ta.style.display = 'none';
+                apiBox.style.display = '';
+                apiBox.textContent = ckFormatReply(o.replay_api) || 'رد المزوّد (API) رح ينجاب تلقائياً ويظهر للعميل';
+                document.getElementById('decOrdLabel').textContent = 'رد النظام (من المزوّد API):';
+            } else {
+                apiBox.style.display = 'none';
+                ta.style.display = '';
+                ta.value = o.admin_reply || '';
+                document.getElementById('decOrdLabel').textContent = 'رد النظام (يظهر للعميل):';
+            }
+            const btn = document.getElementById('decOrdConfirm');
+            btn.textContent = acc ? 'تأكيد القبول' : 'تأكيد الرفض';
+            btn.className = acc ? 'btn-accept' : 'btn-reject';
+            openModal('decideOrderModal');
+        }
+
+        async function ckOrderConfirmDecision() {
+            if (ckBusy || !ckDecision) return;
+            const o = ckDecision.o, action = ckDecision.action;
+            const reply = o.api_product_id ? '' : document.getElementById('decOrdReply').value.trim();
+            const btn = document.getElementById('decOrdConfirm');
             ckBusy = true;
+            btn.disabled = true;
             try {
                 const res = await fetch('/api/process_product_order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: o.id, action: action })
+                    body: JSON.stringify({ id: o.id, action: action, admin_reply: reply })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
                     ckToast(action === 'accept' ? 'تم قبول الطلب #' + o.id : 'تم رفض الطلب #' + o.id + ' وإعادة المبلغ');
+                    closeModal('decideOrderModal');
                     closeModal('reviewOrderModal');
+                    ckDecision = null;
                     await ckOrdersLoad();
                     fetchStatsAndRender();
                 } else {
                     ckToast(data.message || 'حدث خطأ في معالجة العملية!', 'err');
                 }
             } catch (e) { ckToast('تعذر الاتصال بالسيرفر', 'err'); }
+            btn.disabled = false;
             ckBusy = false;
         }
 
@@ -19200,6 +19341,7 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
     order_uuid_val = str(uuid.uuid4())
     order_status = "قيد الانتظار"
     system_response = "تم تسجيل الطلب في انتظار القبول"
+    api_replay = None
 
     if api_product_id and PROVIDERS_DATA:
         provider = next((p for p in PROVIDERS_DATA if p.get('name') == provider_name), PROVIDERS_DATA[0])
@@ -19215,6 +19357,7 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
                 res_data = api_res.get('data', {})
                 st = res_data.get('status')
                 system_response = f"API OK - Status: {st} - Qty: {quantity}"
+                api_replay = res_data.get('replay_api')
                 if st == 'accept':
                     order_status = "مكتملة"
                 elif st == 'reject':
@@ -19257,6 +19400,8 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
             "order_source": order_source,
             "base_price": inv_cost_for_sub(sub, quantity)
         }
+        if api_replay:
+            order['replay_api'] = api_replay
         ORDERS_DATA.append(order)
         save_json_file(ORDERS_FILE, ORDERS_DATA)
 
@@ -22674,6 +22819,15 @@ self.addEventListener('fetch', event => {
             target_order = next((o for o in ORDERS_DATA if o.get('id') == order_id), None)
 
             if target_order and target_order.get('status') in ["قيد الانتظار", "تم الارسال للتشيك"]:
+                # رد النظام اللي بيظهر للعميل: يدوي = اللي كتبه الأدمن، API = من المزوّد
+                admin_reply = str(data.get('admin_reply') or '').strip()[:2000]
+                if target_order.get('api_product_id'):
+                    if not target_order.get('replay_api'):
+                        _rp = fetch_provider_replay(target_order)
+                        if _rp:
+                            target_order['replay_api'] = _rp
+                elif admin_reply:
+                    target_order['admin_reply'] = admin_reply
                 if action == 'accept':
                     target_order['status'] = "مكتملة"
                     user_pwd = USERS_DATA.get(target_order.get('email'), {}).get('password', 'غير معروف')
