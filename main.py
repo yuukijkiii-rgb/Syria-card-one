@@ -2903,7 +2903,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .currency-option-rate { font-size: 0.75rem; color: #a1a1aa; direction: rtl; }
         .currency-option-item.selected .currency-option-rate { color: #fef3c7; }
 
-        #depositPage, #myOrdersPage, #myDepositsPage, #myWalletPage, #myNotificationsPage, #telegramLinkPage { display: none; flex-direction: column; gap: 14px; width: 100%; padding: 0 15px; }
+        #depositPage, #myOrdersPage, #orderDetailPage, #myDepositsPage, #myWalletPage, #myNotificationsPage, #telegramLinkPage { display: none; flex-direction: column; gap: 14px; width: 100%; padding: 0 15px; }
 
         #autoDepositPage, #autoDepositSuccessPage { display: none; flex-direction: column; gap: 14px; width: 100%; padding: 0 15px; }
         .auto-dep-body { display: flex; flex-direction: column; gap: 8px; }
@@ -3123,6 +3123,18 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .status-reject { color: #f87171; border-color: #f87171; background: rgba(248, 113, 113, 0.1); }
         #orderDetailModal .modal-box { max-height: 90vh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
         .sys-reply-wrap { margin-top: 6px; }
+        .odp-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .odp-back { background: transparent; color: var(--text-color); border: 1px solid var(--border-color); border-radius: 12px; padding: 8px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+        .odp-back:active { transform: scale(0.95); }
+        .odp-title { font-size: 1.15rem; font-weight: 800; color: var(--text-color); }
+        .odp-hero { background: #121023; border: 1px solid rgba(217, 163, 62, 0.3); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+        .odp-hero-price { font-size: 1.7rem; font-weight: 800; color: #4ade80; direction: ltr; }
+        .odp-hero-name { font-size: 0.95rem; font-weight: 800; color: var(--text-color); }
+        .odp-hero-sub { font-size: 0.78rem; color: var(--subtext-color); }
+        .odp-card { background: #121023; border: 1px solid var(--border-color); border-radius: 18px; padding: 6px 16px; }
+        .odp-card .order-detail-row { padding: 12px 0; }
+        .odp-section-title { font-size: 0.9rem; font-weight: 800; color: var(--text-color); margin: 4px 2px 0; }
+        #orderDetailPage { padding-bottom: 24px; }
         .sys-reply-label { color: var(--subtext-color); font-weight: 600; font-size: 0.8rem; margin-bottom: 6px; display: block; }
         .sys-reply-box { background: #0b0a1a; border: 1px solid #2e2850; border-radius: 12px; padding: 10px; }
         .sys-reply-box pre { margin: 0; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; unicode-bidi: plaintext; text-align: start; font-family: Consolas, Menlo, monospace; font-size: 0.8rem; line-height: 1.6; color: #e5e7eb; }
@@ -4374,6 +4386,37 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         <div class="wallet-empty-box" id="walletEmptyBox">
             <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
             <span>لا توجد عناصر</span>
+        </div>
+    </div>
+
+    <div id="orderDetailPage">
+        <div class="odp-top">
+            <div class="odp-title">تفاصيل الطلب</div>
+            <button type="button" class="odp-back" onclick="closeOrderDetailPage()">رجوع</button>
+        </div>
+
+        <div class="odp-hero">
+            <div class="odp-hero-price" id="odpPrice">-</div>
+            <div class="odp-hero-name" id="odpProduct">-</div>
+            <div class="odp-hero-sub" id="odpSubcategory">-</div>
+            <span class="order-detail-value status-badge" id="odpStatus">-</span>
+        </div>
+
+        <div class="odp-card">
+            <div class="order-detail-row"><span class="order-detail-label">رقم الطلب</span><span class="order-detail-value" id="odpOrderId" style="direction:ltr;">-</span></div>
+            <div class="order-detail-row"><span class="order-detail-label">المدخلات</span><span class="order-detail-value" id="odpInput">-</span></div>
+            <div class="order-detail-row"><span class="order-detail-label">الكمية</span><span class="order-detail-value" id="odpQuantity">-</span></div>
+            <div class="order-detail-row"><span class="order-detail-label">التاريخ والوقت</span><span class="order-detail-value" id="odpDate" style="direction:ltr;">-</span></div>
+        </div>
+
+        <div class="sys-reply-wrap" id="odpReplyWrap" style="display:none;">
+            <div class="odp-section-title">رد النظام</div>
+            <div class="sys-reply-box" style="margin-top:8px;">
+                <pre id="odpReply"></pre>
+                <div class="sys-reply-actions">
+                    <button type="button" class="sys-reply-copy" id="odpReplyCopyBtn" onclick="copyOdpReply()">نسخ</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -5964,7 +6007,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             if (document.getElementById('sidebar').classList.contains('active')) { toggleSidebar(); }
             document.getElementById('shopMainSection').style.display = 'none';
             document.getElementById('depositPage').style.display = 'none';
-            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'none'; document.getElementById('orderDetailPage').style.display = 'none';
             document.getElementById('myDepositsPage').style.display = 'none';
             document.getElementById('myWalletPage').style.display = 'none';
             document.getElementById('bannerContainer').style.display = 'none';
@@ -6446,7 +6489,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         async function openDepositPage() {
             if (document.getElementById('sidebar').classList.contains('active')) { toggleSidebar(); }
             document.getElementById('shopMainSection').style.display = 'none';
-            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'none'; document.getElementById('orderDetailPage').style.display = 'none';
             document.getElementById('myDepositsPage').style.display = 'none';
             document.getElementById('myWalletPage').style.display = 'none';
             document.getElementById('myNotificationsPage').style.display = 'none';
@@ -6468,7 +6511,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         async function openTelegramLinkPage() {
             if (document.getElementById('sidebar').classList.contains('active')) { toggleSidebar(); }
-            ['shopMainSection', 'depositPage', 'myOrdersPage', 'myDepositsPage', 'myWalletPage', 'myNotificationsPage', 'bannerContainer', 'tickerWrapper']
+            ['shopMainSection', 'depositPage', 'myOrdersPage', 'orderDetailPage', 'myDepositsPage', 'myWalletPage', 'myNotificationsPage', 'bannerContainer', 'tickerWrapper']
                 .forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
             document.getElementById('telegramLinkPage').style.display = 'flex';
             const input = document.getElementById('tgLinkCodeInput');
@@ -6870,7 +6913,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             if (document.getElementById('sidebar').classList.contains('active')) { toggleSidebar(); }
             document.getElementById('shopMainSection').style.display = 'none';
             document.getElementById('depositPage').style.display = 'none';
-            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'none'; document.getElementById('orderDetailPage').style.display = 'none';
             document.getElementById('myWalletPage').style.display = 'none';
             document.getElementById('myNotificationsPage').style.display = 'none';
             document.getElementById('telegramLinkPage').style.display = 'none'; hideAutoDepositPages();
@@ -6934,7 +6977,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('shopMainSection').style.display = 'none';
             document.getElementById('depositPage').style.display = 'none';
             document.getElementById('myDepositsPage').style.display = 'none';
-            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'none'; document.getElementById('orderDetailPage').style.display = 'none';
             document.getElementById('myNotificationsPage').style.display = 'none';
             document.getElementById('telegramLinkPage').style.display = 'none'; hideAutoDepositPages();
             document.getElementById('bannerContainer').style.display = 'none';
@@ -7405,6 +7448,62 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             } else { fallback(); }
         }
 
+        let odpSavedScroll = 0;
+
+        function openOrderDetailPage(order) {
+            odpSavedScroll = window.scrollY || 0;
+            document.getElementById('odpOrderId').textContent = order.order_uuid ? order.order_uuid.substring(0, 16) : order.id;
+            document.getElementById('odpProduct').textContent = order.product || '-';
+            document.getElementById('odpSubcategory').textContent = order.subcategory || '-';
+            document.getElementById('odpPrice').textContent = formatBalance(order.price) + ' $';
+            document.getElementById('odpInput').textContent = order.input || '-';
+            document.getElementById('odpQuantity').textContent = order.quantity || '1';
+            document.getElementById('odpDate').textContent = ((order.time || '') + ' ' + (order.date || '')).trim() || '-';
+
+            let statusText = 'قيد الانتظار', statusClass = 'status-pending';
+            if (order.status === 'مكتملة') { statusText = 'مقبول'; statusClass = 'status-accept'; }
+            else if (order.status === 'مرفوضة') { statusText = 'مرفوض'; statusClass = 'status-reject'; }
+            else if (order.status === 'تم الارسال للتشيك') { statusText = 'قيد المراجعة'; }
+            const st = document.getElementById('odpStatus');
+            st.textContent = statusText;
+            st.className = 'order-detail-value status-badge ' + statusClass;
+
+            const replyTxt = getOrderReplyText(order);
+            document.getElementById('odpReply').textContent = replyTxt;
+            document.getElementById('odpReplyWrap').style.display = replyTxt ? '' : 'none';
+            document.getElementById('odpReplyCopyBtn').textContent = 'نسخ';
+
+            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('orderDetailPage').style.display = 'flex';
+            window.scrollTo(0, 0);
+        }
+
+        function closeOrderDetailPage() {
+            document.getElementById('orderDetailPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'flex';
+            window.scrollTo(0, odpSavedScroll);
+        }
+
+        function copyOdpReply() {
+            const txt = document.getElementById('odpReply').textContent || '';
+            if (!txt) return;
+            const btn = document.getElementById('odpReplyCopyBtn');
+            const done = function () {
+                btn.textContent = 'تم النسخ ✓';
+                setTimeout(function () { btn.textContent = 'نسخ'; }, 1500);
+            };
+            const fallback = function () {
+                const ta = document.createElement('textarea');
+                ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select();
+                try { document.execCommand('copy'); done(); } catch (e) { }
+                ta.remove();
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(done).catch(fallback);
+            } else { fallback(); }
+        }
+
         function closeOrderDetailModal() {
             document.getElementById('orderDetailModal').classList.remove('active');
         }
@@ -7420,6 +7519,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             document.getElementById('bannerContainer').style.display = 'none';
             document.getElementById('tickerWrapper').style.display = 'none';
             document.getElementById('myOrdersPage').style.display = 'flex';
+            document.getElementById('orderDetailPage').style.display = 'none';
 
             const savedEmail = localStorage.getItem('loggedInUserEmail');
             
@@ -7436,7 +7536,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function closeMyOrdersPage() {
-            document.getElementById('myOrdersPage').style.display = 'none';
+            document.getElementById('myOrdersPage').style.display = 'none'; document.getElementById('orderDetailPage').style.display = 'none';
             document.getElementById('shopMainSection').style.display = 'block';
             if (currentLevel === 'categories') {
                 loadBanners();
@@ -7521,7 +7621,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             filtered.forEach(o => {
                 const card = document.createElement('div');
                 card.className = 'order-card-exact';
-                card.onclick = () => openOrderDetailModal(o);
+                card.onclick = () => openOrderDetailPage(o);
 
                 let statusColor = '#f59e0b';
                 let statusText = o.status || 'قيد الانتظار';
