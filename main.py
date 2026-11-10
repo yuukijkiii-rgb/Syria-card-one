@@ -1040,6 +1040,8 @@ class OrderPollingSystem:
 
                         if api_status == "accept":
                             target_order['status'] = "مكتملة"
+                            if not target_order.get('completed_at'):
+                                target_order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             target_order['api_order_id'] = api_order_id
                             target_order['replay_api'] = replay_api
                             target_order['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1064,6 +1066,8 @@ class OrderPollingSystem:
                                 break
                             
                             target_order['status'] = "مرفوضة"
+                            if not target_order.get('completed_at'):
+                                target_order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             target_order['api_order_id'] = api_order_id
                             target_order['replay_api'] = replay_api
                             target_order['updated_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2680,6 +2684,13 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             font-size: var(--sidebar-font-size);
         }
         .sidebar.active { right: 0; }
+        /* تمرير مريح بالإصبع: طول الشاشة الفعلي، سحب ناعم، ومساحة تحت بآخر القائمة */
+        .sidebar {
+            height: 100vh; height: 100dvh;
+            overflow-y: auto; overflow-x: hidden;
+            -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+            padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+        }
         .sidebar-header { display: flex; align-items: center; justify-content: flex-end; padding: 0 5px; }
         .close-btn { background: transparent; border: none; color: var(--subtext-color); font-size: 1.5rem; cursor: pointer; }
 
@@ -3129,6 +3140,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .odp-title { font-size: 1.15rem; font-weight: 800; color: var(--text-color); }
         .odp-hero { background: #121023; border: 1px solid rgba(217, 163, 62, 0.3); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
         .odp-hero-price { font-size: 1.7rem; font-weight: 800; color: #4ade80; direction: ltr; }
+        .odp-hero-time { font-size: 0.82rem; color: var(--subtext-color); }
+        .odp-hero-time b { color: var(--text-color); font-weight: 800; }
         .odp-hero-name { font-size: 0.95rem; font-weight: 800; color: var(--text-color); }
         .odp-hero-sub { font-size: 0.78rem; color: var(--subtext-color); }
         .odp-card { background: #121023; border: 1px solid var(--border-color); border-radius: 18px; padding: 6px 16px; }
@@ -4397,6 +4410,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         <div class="odp-hero">
             <div class="odp-hero-price" id="odpPrice">-</div>
+            <div class="odp-hero-time" id="odpElapsedRow" style="display:none;">الوقت المستغرق: <b id="odpElapsed">-</b></div>
             <div class="odp-hero-name" id="odpProduct">-</div>
             <div class="odp-hero-sub" id="odpSubcategory">-</div>
             <span class="order-detail-value status-badge" id="odpStatus">-</span>
@@ -4937,13 +4951,18 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             }, 320);
         }
 
+        let touchStartY = 0;
         document.addEventListener('touchstart', e => {
             touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
         }, {passive: true});
 
         document.addEventListener('touchmove', e => {
             touchCurrentX = e.touches[0].clientX;
             let diffX = touchCurrentX - touchStartX;
+            let diffY = e.touches[0].clientY - touchStartY;
+            // سحب أفقي واضح فقط (حتى ما تنسكّر القائمة وإنت عم تمرّر لفوق وتحت)
+            if (Math.abs(diffX) < Math.abs(diffY) * 2) return;
 
             if (!sidebar.classList.contains('active') && touchStartX < 35 && diffX > 50) {
                 toggleSidebar();
@@ -7450,6 +7469,36 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         let odpSavedScroll = 0;
 
+        function parseOrderTs(s) {
+            if (!s) return NaN;
+            return new Date(String(s).trim().replace(' ', 'T')).getTime();
+        }
+
+        function formatElapsed(totalSec) {
+            const units = [
+                { v: Math.floor(totalSec / 86400), one: 'يوم', few: 'أيام' },
+                { v: Math.floor((totalSec % 86400) / 3600), one: 'ساعة', few: 'ساعات' },
+                { v: Math.floor((totalSec % 3600) / 60), one: 'دقيقة', few: 'دقائق' },
+                { v: totalSec % 60, one: 'ثانية', few: 'ثواني' }
+            ];
+            const parts = [];
+            for (let i = 0; i < units.length && parts.length < 2; i++) {
+                const u = units[i];
+                if (u.v <= 0) { if (parts.length > 0) break; else continue; }
+                parts.push(u.v + ' ' + ((u.v >= 2 && u.v <= 10) ? u.few : u.one));
+            }
+            return parts.length ? parts.join(' و ') : 'أقل من ثانية';
+        }
+
+        // الوقت من إنشاء الطلب لحد القبول أو الرفض
+        function getOrderElapsedText(order) {
+            if (order.status !== 'مكتملة' && order.status !== 'مرفوضة') return '';
+            const start = parseOrderTs((order.date || '') + ' ' + (order.time || ''));
+            const end = parseOrderTs(order.completed_at || order.updated_at);
+            if (isNaN(start) || isNaN(end)) return '';
+            return formatElapsed(Math.max(0, Math.round((end - start) / 1000)));
+        }
+
         function openOrderDetailPage(order) {
             odpSavedScroll = window.scrollY || 0;
             document.getElementById('odpOrderId').textContent = order.order_uuid ? order.order_uuid.substring(0, 16) : order.id;
@@ -7467,6 +7516,10 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             const st = document.getElementById('odpStatus');
             st.textContent = statusText;
             st.className = 'order-detail-value status-badge ' + statusClass;
+
+            const elapsedTxt = getOrderElapsedText(order);
+            document.getElementById('odpElapsed').textContent = elapsedTxt;
+            document.getElementById('odpElapsedRow').style.display = elapsedTxt ? '' : 'none';
 
             const replyTxt = getOrderReplyText(order);
             document.getElementById('odpReply').textContent = replyTxt;
@@ -8537,6 +8590,7 @@ ADMIN_HTML_CONTENT = """
             transition: right .35s cubic-bezier(.2,.8,.2,1) !important;
         }
         .sidebar.active { right: 0 !important; }
+        .sidebar { height: 100vh; height: 100dvh; overflow-y: auto !important; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-bottom: calc(110px + env(safe-area-inset-bottom, 0px)) !important; }
         .sidebar-header { border-bottom: 1px solid var(--line) !important; padding-bottom: 14px !important; margin-bottom: 4px; }
         .sidebar-header > div { color: var(--gold) !important; font-size: 1.05rem !important; font-weight: 800 !important; }
         .sidebar-header .close-btn { width: 34px; height: 34px; border-radius: 10px; background: var(--bg-2); border: 1px solid var(--line-2); color: var(--muted); transition: all .2s; }
@@ -19502,6 +19556,8 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
         }
         if api_replay:
             order['replay_api'] = api_replay
+        if order_status in ("مكتملة", "مرفوضة"):
+            order['completed_at'] = now.strftime("%Y-%m-%d %H:%M:%S")
         ORDERS_DATA.append(order)
         save_json_file(ORDERS_FILE, ORDERS_DATA)
 
@@ -19800,6 +19856,14 @@ IMAGE_FILE_PATHS = {"/api/update_category", "/api/add_category", "/api/add_produ
                     "/api/edit_imported_section", "/api/edit_imported_subsection", "/api/import_api_category_full"}
 MAX_IMAGE_CHARS = 1500000           # أكبر صورة قسم (نص base64) ~1.1MB
 POST_LOCK = threading.RLock()   # يسلسل عمليات الكتابة (POST) حتى ما يصير تضارب بالأرصدة والبيانات
+# مسارات ما بتمرّ من POST_LOCK: إما قراءة فقط، أو بتحمي نفسها بـ DATA_LOCK (زي بوت التلغرام اللي كان أصلاً بينفّذ الشراء بدون القفل).
+# السبب: هي بتعمل اتصالات خارجية بطيئة (مزوّد/تلغرام)، ولو مسكت القفل العام كل الموقع (دخول/أدمن/شراء) بيعلق وراها.
+_ORDER_SYNC_GATE = threading.Lock()  # مزامنة حالات الطلبات: وحدة بس بنفس الوقت
+NO_POST_LOCK_PATHS = frozenset({
+    "/api/login", "/api/admin_login", "/api/purchase",
+    "/api/verify_product_id", "/api/get_provider_profile",
+    "/api/get_provider_products", "/api/fetch_api_categories",
+})
 
 
 
@@ -20533,7 +20597,7 @@ _SC_SYP_WORDS = ("syp", "ل.س", "ليرة", "سوري", "lira", "pound", "syria
 
 def _sc_text_currency(v):
     t = str(v).strip().lower()
-    if not t:
+    if not t or "usdt" in t:
         return None
     u = any(w in t for w in _SC_USD_WORDS)
     p = any(w in t for w in _SC_SYP_WORDS)
@@ -20544,16 +20608,24 @@ def _sc_text_currency(v):
     return None
 
 
+def _sc_last_key(k):
+    """آخر جزء من مسار الحقل بدون رقم الفهرس: a.b[0] -> b"""
+    return re.sub(r"\[\d+\]$", "", str(k).lower().split(".")[-1])
+
+
+_SC_CUR_KEY_PARTS = ("coin", "currenc", "symbol", "unit", "asset", "ccy")
+
+
 def _sc_tx_currency(flat, coin_map):
     for k, v in flat:
-        last = k.lower().split(".")[-1]
-        if isinstance(v, str) and any(x in last for x in ("coin", "currenc", "symbol", "unit")) and not last.endswith("id"):
+        last = _sc_last_key(k)
+        if isinstance(v, str) and any(x in last for x in _SC_CUR_KEY_PARTS) and not last.endswith("id"):
             c = _sc_text_currency(v)
             if c:
                 return c
     for k, v in flat:
-        last = k.lower().split(".")[-1]
-        if last in ("coin_id", "currency_id") and not isinstance(v, bool):
+        last = _sc_last_key(k)
+        if last in ("coin_id", "currency_id", "coinid") and not isinstance(v, bool):
             if str(v) in coin_map:
                 return coin_map[str(v)]
             for cur, cid in SHAMCASH_COIN_IDS.items():
@@ -20562,25 +20634,142 @@ def _sc_tx_currency(flat, coin_map):
     return None
 
 
+_SC_DIR_KEYS = ("type", "direction", "kind", "operation", "tx_type", "transaction_type",
+                "txn_type", "operation_type", "flow", "side")
+_SC_OUT_TOKENS = {"out", "outgoing", "sent", "send", "sending", "withdraw", "withdrawal",
+                  "debit", "payout", "expense"}
+_SC_IN_TOKENS = {"in", "incoming", "receive", "received", "receiving", "credit", "deposit", "income"}
+_SC_OUT_AR = ("صادر", "ارسال", "إرسال", "سحب", "خصم")
+_SC_IN_AR = ("وارد", "استلام", "استقبال", "ايداع", "إيداع")
+
+
 def _sc_tx_is_outgoing(flat):
-    words = ("out", "sent", "send", "withdraw", "debit", "outgoing", "صادر", "ارسال", "إرسال", "سحب")
+    # (كان سابقاً يبحث عن "out" كجزء من أي كلمة فيرفض عمليات سليمة، الآن مطابقة كلمات كاملة)
     for k, v in flat:
-        last = k.lower().split(".")[-1]
-        if last in ("type", "direction", "kind", "operation", "tx_type", "transaction_type", "flow") and isinstance(v, str):
+        last = _sc_last_key(k)
+        if last in ("is_outgoing", "outgoing", "is_sent") and v is True:
+            return True
+        if last in ("is_incoming", "incoming", "is_received") and v is False:
+            return True
+        if last in _SC_DIR_KEYS and isinstance(v, str):
             t = v.strip().lower()
-            if any(w in t for w in words):
+            if not t:
+                continue
+            tokens = set(re.split(r"[^a-z]+", t)) - {""}
+            if (tokens & _SC_IN_TOKENS) or any(w in t for w in _SC_IN_AR):
+                continue
+            if (tokens & _SC_OUT_TOKENS) or any(w in t for w in _SC_OUT_AR):
                 return True
     return False
 
 
+_SC_AMOUNT_SKIP = ("fee", "commission", "balance", "after", "before", "charge", "tax")
+
+
 def _sc_tx_amount(flat):
+    # نفضّل الحقل الأعلى مستوى، ونتجاوز الرسوم والأرصدة المتداخلة
     for key in ("amount", "value", "total", "sum", "net_amount"):
-        for k, v in flat:
-            if k.lower().split(".")[-1] == key:
-                d = _to_decimal(v)
-                if d is not None:
-                    return d
+        cands = [(k, v) for k, v in flat if _sc_last_key(k) == key]
+        cands.sort(key=lambda kv: kv[0].count(".") + kv[0].count("["))
+        for k, v in cands:
+            if any(s in k.lower() for s in _SC_AMOUNT_SKIP):
+                continue
+            d = _to_decimal(v)
+            if d is not None:
+                return d
     return None
+
+
+def _sc_norm_id(v):
+    return re.sub(r"[\s\-_#:./]", "", str(v)).lower()
+
+
+_SC_NOID_KEYS = {"amount", "value", "total", "sum", "net_amount", "fee", "fees", "balance",
+                 "limit", "commission"}
+
+
+def _sc_id_in_tx(flat, tx_id):
+    """هل أي حقل بالعملية يساوي رقم العملية (بعد تنظيف المسافات والشرطات والأصفار البادئة)؟"""
+    want = _sc_norm_id(tx_id)
+    if not want:
+        return False
+    want_num = want.lstrip("0") if want.isdigit() else None
+    for k, v in flat:
+        if v is None or isinstance(v, bool):
+            continue
+        if _sc_last_key(k) in _SC_NOID_KEYS:
+            continue
+        if isinstance(v, float):
+            if not v.is_integer():
+                continue
+            v = int(v)
+        got = _sc_norm_id(v)
+        if got == want:
+            return True
+        if want_num and got.isdigit() and got.lstrip("0") == want_num:
+            return True
+    return False
+
+
+def _sc_extract_list(dd):
+    """يطلع قائمة العمليات من data مهما كان اسم المفتاح (transactions/items/results/...)"""
+    if isinstance(dd, list):
+        return dd
+    if isinstance(dd, dict):
+        for k in ("transactions", "items", "results", "data", "records", "rows", "list"):
+            v = dd.get(k)
+            if isinstance(v, list):
+                return v
+            if isinstance(v, dict):
+                r = _sc_extract_list(v)
+                if r is not None:
+                    return r
+        for v in dd.values():
+            if isinstance(v, list) and (not v or isinstance(v[0], dict)):
+                return v
+    return None
+
+
+def _sc_shape(d):
+    if isinstance(d, dict):
+        return "dict keys=%s" % list(d.keys())[:15]
+    if isinstance(d, list):
+        return "list len=%d" % len(d)
+    return type(d).__name__
+
+
+def _sc_tx_brief(tx):
+    """ملخص قصير لعملية للّوج (حقول المعرّفات والمبلغ والعملة والنوع فقط)"""
+    parts = []
+    for k, v in _sc_flatten(tx):
+        last = _sc_last_key(k)
+        if any(x in last for x in ("id", "number", "ref", "hash", "amount", "coin", "currenc",
+                                   "type", "direction", "symbol")):
+            parts.append("%s=%s" % (k, str(v)[:40]))
+    return ", ".join(parts[:10])
+
+
+def _sc_fetch_txs(token, acc_id, cid, tx_id, start_at, use_filter):
+    """يرجع (قائمة_العمليات, None) أو (None, رد_الخطأ)"""
+    last_err = None
+    for lim in (100, 50, 20):   # لو الـ API رفض الحد الكبير ننزل تدريجياً
+        params = {"account_id": acc_id, "start_at": start_at, "limit": lim}
+        if use_filter:
+            params["transaction_ids"] = tx_id
+        if cid is not None:
+            params["coin_id"] = cid
+        resp = _shamcash_get(token, "/transactions", params)
+        if resp.get("status") == "success":
+            dd = resp.get("data")
+            txs = _sc_extract_list(dd)
+            if txs is None:
+                logging.warning("ShamCash-DBG: شكل data غير متوقع في /transactions: %s" % _sc_shape(dd))
+                return [], None
+            return txs, None
+        last_err = resp
+        if str(resp.get("code")) != "VALIDATION_ERROR":
+            break
+    return None, last_err
 
 
 def _sc_collect_coin_map(obj, out=None, depth=0):
@@ -20612,7 +20801,7 @@ def _sc_find_match(token, kind, tx_id, amount):
     if acc.get("status") != "success":
         return {"state": "api_error", "code": acc.get("code"), "message": acc.get("message")}
     d = acc.get("data")
-    accounts = d.get("accounts") if isinstance(d, dict) else d
+    accounts = _sc_extract_list(d)
     if not isinstance(accounts, list) or not accounts:
         return {"state": "api_error", "code": "NO_ACCOUNT", "message": "لا يوجد حساب مرتبط بهذا التوكن"}
     ids = []
@@ -20623,56 +20812,75 @@ def _sc_find_match(token, kind, tx_id, amount):
         return {"state": "api_error", "code": "INACTIVE", "message": "حساب شام كاش غير مفعل"}
 
     start_at = (datetime.now() - timedelta(days=AUTO_DEPOSIT_MAX_AGE_DAYS)).strftime("%Y-%m-%d")
-    api_err = None
+    hard_err = None      # خطأ حقيقي (غير VALIDATION_ERROR)
+    last_err = None
+    ok_responses = 0
     for acc_id in ids[:5]:
         coin_map = {}
         bal = _shamcash_get(token, "/balances", {"account_id": acc_id})
         if bal.get("status") == "success":
             coin_map = _sc_collect_coin_map(bal.get("data"))
+        else:
+            logging.warning("ShamCash-DBG: /balances فشل: %s %s" % (bal.get("code"), bal.get("message")))
         queries = []
         known = SHAMCASH_COIN_IDS.get(currency)
         if known is not None:
             queries.append(known)
         else:
             queries.extend([cid for cid, cur in coin_map.items() if cur == currency])
-        if not queries:
-            queries = [None]
+        if None not in queries:
+            queries.append(None)   # احتياط: استعلام بدون فلتر عملة (لو تعيين coin_id طلع غلط)
         for cid in queries:
-            params = {"account_id": acc_id, "transaction_ids": tx_id, "start_at": start_at, "limit": 20}
-            if cid is not None:
-                params["coin_id"] = cid
-            resp = _shamcash_get(token, "/transactions", params)
-            if resp.get("status") != "success":
-                api_err = resp
-                continue
-            dd = resp.get("data")
-            txs = dd.get("transactions") if isinstance(dd, dict) else dd
-            if not isinstance(txs, list):
-                continue
-            for tx in txs:
-                if not isinstance(tx, dict):
+            for use_filter in (True, False):
+                txs, err = _sc_fetch_txs(token, acc_id, cid, tx_id, start_at, use_filter)
+                if txs is None:
+                    last_err = err
+                    if str(err.get("code")) != "VALIDATION_ERROR":
+                        hard_err = err
+                    logging.warning("ShamCash-DBG: /transactions خطأ (coin_id=%s filter=%s): %s %s" % (
+                        cid, use_filter, err.get("code"), err.get("message")))
                     continue
-                flat = _sc_flatten(tx)
-                if not any((not isinstance(v, bool)) and str(v).strip().lower() == tx_id.lower() for _, v in flat):
-                    continue
-                if _sc_tx_is_outgoing(flat):
-                    continue
-                cur = _sc_tx_currency(flat, coin_map)
-                if cur is None and cid is not None:
-                    cur = currency   # الاستعلام كان مقيداً بعملة هذه الطريقة
-                if cur is None:
-                    logging.warning("ShamCash: تعذر تحديد عملة العملية، الحقول: %s" % [k for k, _ in flat])
-                    continue
-                if cur != currency:
-                    continue
-                amt = _sc_tx_amount(flat)
-                if amt is None:
-                    logging.warning("ShamCash: تعذر قراءة المبلغ، الحقول: %s" % [k for k, _ in flat])
-                    continue
-                if amt > 0 and abs(amt - amount) < Decimal("0.005"):
-                    return {"state": "ok", "account_id": acc_id, "tx": tx}
-    if api_err is not None:
-        return {"state": "api_error", "code": api_err.get("code"), "message": api_err.get("message")}
+                ok_responses += 1
+                found_id = False
+                for tx in txs:
+                    if not isinstance(tx, dict):
+                        continue
+                    flat = _sc_flatten(tx)
+                    if not _sc_id_in_tx(flat, tx_id):
+                        continue
+                    found_id = True
+                    if _sc_tx_is_outgoing(flat):
+                        logging.warning("ShamCash-DBG: العملية موجودة لكنها صادرة (ليست إيداع): %s" % _sc_tx_brief(tx))
+                        continue
+                    cur = _sc_tx_currency(flat, coin_map)
+                    if cur is None and cid is not None:
+                        cur = currency   # الاستعلام كان مقيداً بعملة هذه الطريقة
+                    if cur is None:
+                        logging.warning("ShamCash-DBG: تعذر تحديد عملة العملية: %s" % _sc_tx_brief(tx))
+                        continue
+                    if cur != currency:
+                        logging.warning("ShamCash-DBG: عملة العملية %s لا تطابق الطريقة %s: %s" % (
+                            cur, currency, _sc_tx_brief(tx)))
+                        continue
+                    amt = _sc_tx_amount(flat)
+                    if amt is None:
+                        logging.warning("ShamCash-DBG: تعذر قراءة المبلغ: %s" % _sc_tx_brief(tx))
+                        continue
+                    if amt > 0 and abs(amt - amount) < Decimal("0.005"):
+                        return {"state": "ok", "account_id": acc_id, "tx": tx}
+                    logging.warning("ShamCash-DBG: المبلغ المدخل %s لا يطابق مبلغ العملية %s" % (amount, amt))
+                if found_id:
+                    break   # لقينا العملية (ورفضناها لسبب مسجل فوق)، ما في داعي لاستعلام إضافي
+                if txs:
+                    logging.warning("ShamCash-DBG: رقم العملية '%s' غير موجود ضمن %d عملية (coin_id=%s filter=%s). عينة: %s" % (
+                        tx_id, len(txs), cid, use_filter,
+                        " | ".join(_sc_tx_brief(t) for t in txs[:3] if isinstance(t, dict))))
+                else:
+                    logging.warning("ShamCash-DBG: الرد فاضي (coin_id=%s filter=%s)" % (cid, use_filter))
+    if hard_err is not None:
+        return {"state": "api_error", "code": hard_err.get("code"), "message": hard_err.get("message")}
+    if ok_responses == 0 and last_err is not None:
+        return {"state": "api_error", "code": last_err.get("code"), "message": last_err.get("message")}
     return {"state": "no_match"}
 
 
@@ -20975,6 +21183,28 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _is_admin_request(self):
+        """True إذا الطلب جاي من أدمن بجلسة صالحة (مو بس وجود الهيدر)."""
+        return admin_session_get(self.headers.get("X-Admin-Token", "")) is not None
+
+    def _maint_passthrough(self, path):
+        """بوضع الصيانة: شو مسموح يمر بدون ما يكون المستخدم أدمن."""
+        if self._is_admin_request():
+            return True
+        if path.startswith("/admin") or path.startswith("/api/maintenance"):
+            return True
+        if path in ("/api/admin_login", "/api/admin_logout", "/api/admin_me", "/api/splash",
+                    "/api/get_appearance_settings"):
+            return True
+        # الصور/الفيديوهات: لازم تضل شغالة لأن <img> ما بيبعت هيدر الأدمن (ولشعار شاشة الصيانة)
+        if path.startswith("/media/"):
+            return True
+        return False
+
+    def _maint_block_json(self):
+        self._reply_json({"status": "error", "maintenance": True,
+                          "message": MAINTENANCE_DATA.get("message") or "الموقع تحت أعمال الصيانة"}, 503)
+
     def _admin_gate(self, path, data=None):
         """يتأكد إن الطلب من أدمن عنده الصلاحية. يرجّع سياق الأدمن، أو None بعد ما يرد 401/403."""
         need = ADMIN_PATH_PERMS.get(path)
@@ -21102,46 +21332,69 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self._send_bytes_fast(body, "application/json; charset=utf-8")
 
     def sync_orders_status_with_api(self):
-        with POST_LOCK:
+        # قبل: كان يمسك POST_LOCK وهو يسأل المزوّد عن كل طلب معلّق (5 ثواني لكل طلب) فيجمّد الموقع كله.
+        # هلق: الاتصال بالمزوّد بيصير بدون قفل، والتطبيق على البيانات بقفل قصير، ومزامنة وحدة بس بنفس الوقت.
+        if not _ORDER_SYNC_GATE.acquire(False):
+            return
+        try:
             self._sync_orders_status_impl()
+        finally:
+            _ORDER_SYNC_GATE.release()
 
     def _sync_orders_status_impl(self):
-        changed = False
         if not PROVIDERS_DATA:
             return
+        deadline = time.time() + 20  # ميزانية وقت: الباقي بيكمل بالمرة الجاية
+        pending = [(o.get('id'), o.get('order_uuid'), o.get('provider_name'))
+                   for o in list(ORDERS_DATA)
+                   if o.get('status') in ["قيد الانتظار", "تم الارسال للتشيك"] and o.get('order_uuid')]
+        results = {}
 
-        for order in ORDERS_DATA:
-            if order.get('status') in ["قيد الانتظار", "تم الارسال للتشيك"] and order.get('order_uuid'):
-                p_name = order.get('provider_name')
-                provider = next((p for p in PROVIDERS_DATA if p.get('name') == p_name), PROVIDERS_DATA[0])
-                token = provider.get('token')
-                url = provider.get('url', '').rstrip('/') + '/'
+        def _check_one(item):
+            oid, order_uuid_val, p_name = item
+            if time.time() > deadline:
+                return
+            provider = next((p for p in PROVIDERS_DATA if p.get('name') == p_name), PROVIDERS_DATA[0])
+            token = provider.get('token')
+            url = provider.get('url', '').rstrip('/') + '/'
+            try:
+                check_url = f"{url}client/api/check?orders=[{order_uuid_val}]&uuid=1"
+                res = make_api_request(check_url, token, timeout=5)  # بدون أي قفل
+                if res.get('status') == "OK" and res.get('data') and len(res['data']) > 0:
+                    results[oid] = res['data'][0].get('status')
+            except Exception as e:
+                logging.error(f"خطأ بمزامنة الطلب #{oid}: {e}")
 
-                try:
-                    order_uuid_val = order.get('order_uuid')
-                    check_url = f"{url}client/api/check?orders=[{order_uuid_val}]&uuid=1"
-                    res = make_api_request(check_url, token, timeout=5)
-                    
-                    if res.get('status') == "OK" and res.get('data') and len(res['data']) > 0:
-                        api_status = res['data'][0].get('status')
-                        if api_status == "accept":
-                            order['status'] = "مكتملة"
-                            changed = True
-                        elif api_status == "reject":
-                            if order.get('status') == "مرفوضة":
-                                continue
-                            order['status'] = "مرفوضة"
-                            u_email = order.get('email')
-                            if u_email in USERS_DATA:
-                                cur_b = round(float(USERS_DATA[u_email].get('balance', 0)), 10)
-                                USERS_DATA[u_email]['balance'] = round(cur_b + float(order.get('price', 0)), 10)
-                                save_json_file(USERS_FILE, USERS_DATA)
-                            changed = True
-                except Exception as e:
-                    logging.error(f"خطأ بمزامنة الطلب #{order.get('id')}: {e}")
-
-        if changed:
-            save_json_file(ORDERS_FILE, ORDERS_DATA)
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as _ex:  # بالتوازي بدل واحد واحد
+            list(_ex.map(_check_one, pending))
+        if not results:
+            return
+        with POST_LOCK:  # تطبيق سريع فقط
+            changed = False
+            for order in ORDERS_DATA:
+                api_status = results.get(order.get('id'))
+                # نعيد فحص الحالة: إذا انغيّرت أثناء الانتظار (أدمن/نظام المتابعة) ما نطبّق مرة ثانية (يمنع تكرار الاسترجاع)
+                if not api_status or order.get('status') not in ["قيد الانتظار", "تم الارسال للتشيك"]:
+                    continue
+                if api_status == "accept":
+                    order['status'] = "مكتملة"
+                    if not order.get('completed_at'):
+                        order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    changed = True
+                elif api_status == "reject":
+                    order['status'] = "مرفوضة"
+                    if not order.get('completed_at'):
+                        order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    u_email = order.get('email')
+                    if u_email in USERS_DATA:
+                        with DATA_LOCK:
+                            cur_b = round(float(USERS_DATA[u_email].get('balance', 0)), 10)
+                            USERS_DATA[u_email]['balance'] = round(cur_b + float(order.get('price', 0)), 10)
+                            save_json_file(USERS_FILE, USERS_DATA)
+                    changed = True
+            if changed:
+                save_json_file(ORDERS_FILE, ORDERS_DATA)
 
     def _serve_media(self):
         name = urllib.parse.urlparse(self.path).path[len("/media/"):]
@@ -21201,8 +21454,12 @@ class WebAppHandler(BaseHTTPRequestHandler):
         if _ap in ADMIN_PATH_PERMS or _ap == "/api/admin_me":
             if self._handle_admin_get(_ap):
                 return
-        # First, check maintenance mode - but allow admin routes
-        if not self.path.startswith("/admin") and not self.path.startswith("/api/maintenance") and not self.headers.get("X-Admin-Token") and MAINTENANCE_DATA.get("is_active"):
+        # وضع الصيانة: الموقع يطفي عن المستخدمين، لوحة الأدمن (جلسة صالحة) تضل شغالة
+        if MAINTENANCE_DATA.get("is_active") and not self._maint_passthrough(self.path.split("?")[0]):
+            if self.path.startswith("/client/api/"):
+                # واجهة الـ API للعملاء: رد JSON برمز الخطأ 130 (مثل الموثّق بصفحة الـ API)
+                self._reply_json({"error": 130, "message": "The site is under maintenance"}, 503)
+                return
             self.send_response(503)
             self.send_header("Content-type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-cache, must-revalidate")
@@ -21740,6 +21997,8 @@ self.addEventListener('fetch', event => {
                     "order_source": "api",
                     "base_price": inv_cost_for_sub(sub, qty)
                 }
+                if new_order['status'] in ("مكتملة", "مرفوضة"):
+                    new_order['completed_at'] = now.strftime("%Y-%m-%d %H:%M:%S")
                 ORDERS_DATA.append(new_order)
                 save_json_file(ORDERS_FILE, ORDERS_DATA)
                 
@@ -22092,6 +22351,11 @@ self.addEventListener('fetch', event => {
             self._send_html_cached(USER_HTML_CONTENT, "user")
 
     def do_POST(self):
+        if MAINTENANCE_DATA.get("is_active") and self.path in ("/api/auto_deposit_verify", "/api/google_login") \
+                and not self._maint_passthrough(self.path.split("?")[0]):
+            self._maint_block_json()
+            self.close_connection = True
+            return
         if self.path == "/api/auto_deposit_verify":
             # خارج POST_LOCK حتى ما يعلّق السيرفر أثناء انتظار ShamCash
             try:
@@ -22132,8 +22396,11 @@ self.addEventListener('fetch', event => {
                 result = {"status": "error", "message": "حدث خطأ أثناء التجربة"}
             self._reply_json(result)
             return
-        with POST_LOCK:
+        if self.path in NO_POST_LOCK_PATHS:
             self._do_POST_locked()
+        else:
+            with POST_LOCK:
+                self._do_POST_locked()
 
     def _do_POST_locked(self):
         content_length = int(self.headers.get('Content-Length') or 0)
@@ -22151,6 +22418,10 @@ self.addEventListener('fetch', event => {
         if isinstance(data, dict):
             data.pop("__gate_ok", None)
         if self._handle_admin_post(self.path.split("?")[0], data):
+            return
+        if MAINTENANCE_DATA.get("is_active") and not (isinstance(data, dict) and data.get("__gate_ok") is True) \
+                and not self._maint_passthrough(self.path.split("?")[0]):
+            self._maint_block_json()
             return
         if self.path in IMAGE_FILE_PATHS and isinstance(data, dict):
             _img = data.get('image')
@@ -22930,6 +23201,8 @@ self.addEventListener('fetch', event => {
                     target_order['admin_reply'] = admin_reply
                 if action == 'accept':
                     target_order['status'] = "مكتملة"
+                    if not target_order.get('completed_at'):
+                        target_order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     user_pwd = USERS_DATA.get(target_order.get('email'), {}).get('password', 'غير معروف')
                     send_telegram_status_change_notification(target_order, "مكتملة", user_pwd)
                     add_user_notification(
@@ -22940,6 +23213,8 @@ self.addEventListener('fetch', event => {
                     )
                 else:
                     target_order['status'] = "مرفوضة"
+                    if not target_order.get('completed_at'):
+                        target_order['completed_at'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     email = target_order.get('email')
                     price = round(float(target_order.get('price', 0)), 10)
                     if email in USERS_DATA:
@@ -23612,6 +23887,34 @@ self.addEventListener('fetch', event => {
         return
 
 
+def _telegram_in_background(fn):
+    """يشغّل إشعار تلغرام بخيط خلفي حتى ما ينتظر المستخدم/الأدمن اتصال تلغرام (لحد 8 ثواني لكل إشعار)."""
+    import copy
+
+    def wrapper(*args, **kwargs):
+        try:
+            args = copy.deepcopy(args)
+            kwargs = copy.deepcopy(kwargs)
+        except Exception:
+            pass
+
+        def _job():
+            try:
+                fn(*args, **kwargs)
+            except Exception as e:
+                logging.error("إشعار تلغرام (%s): %s" % (fn.__name__, e))
+        threading.Thread(target=_job, daemon=True).start()
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
+
+for _tg_fn_name in ("send_telegram_notification", "send_telegram_purchase_notification",
+                    "send_telegram_new_user_notification", "send_telegram_status_change_notification",
+                    "send_telegram_deposit_notification"):
+    if _tg_fn_name in globals():
+        globals()[_tg_fn_name] = _telegram_in_background(globals()[_tg_fn_name])
+
+
 def main():
     try:
         migrate_inline_images()
@@ -23621,6 +23924,7 @@ def main():
         push_public_key()
     except Exception as e:
         logging.error(f"Web Push غير مفعّل: {e}")
+    ThreadingHTTPServer.request_queue_size = 128  # الافتراضي 5: لما ينفتح عدة اتصالات مرة وحدة كانت تنقطع (Connection reset)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), WebAppHandler)
     server.daemon_threads = True
     threading.Thread(target=telegram_link_bot_loop, daemon=True).start()
