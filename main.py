@@ -19883,7 +19883,7 @@ AUTO_DEPOSIT_KINDS = {
     "syp": {"title": "شام كاش سوري", "currency": "SYP", "label": "ليرة سورية"},
 }
 # اختياري: لو عرفت coin_id الحقيقي لكل عملة بالـ API حطو هون. إذا فاضي بيتكشف تلقائياً من /balances
-SHAMCASH_COIN_IDS = {"USD": None, "SYP": None}
+SHAMCASH_COIN_IDS = {"USD": 1, "SYP": 2}   # حسب التوثيق: 1 USD, 2 SYP, 3 EUR
 AUTO_DEPOSIT_MAX_AGE_DAYS = 30   # أقدم عملية مقبولة
 
 AUTO_DEPOSIT_DATA = load_json_file(AUTO_DEPOSIT_FILE, {})
@@ -20619,7 +20619,9 @@ _SC_CUR_KEY_PARTS = ("coin", "currenc", "symbol", "unit", "asset", "ccy")
 def _sc_tx_currency(flat, coin_map):
     for k, v in flat:
         last = _sc_last_key(k)
-        if isinstance(v, str) and any(x in last for x in _SC_CUR_KEY_PARTS) and not last.endswith("id"):
+        kl = str(k).lower()
+        # المسار الكامل: العملة غالباً كائن متداخل مثل currency.code أو coin.symbol
+        if isinstance(v, str) and any(x in kl for x in _SC_CUR_KEY_PARTS) and not last.endswith("id"):
             c = _sc_text_currency(v)
             if c:
                 return c
@@ -20795,21 +20797,30 @@ def _sc_collect_coin_map(obj, out=None, depth=0):
     return out
 
 
+_SC_ACC_CACHE = {}
+
+
 def _sc_find_match(token, kind, tx_id, amount):
     currency = AUTO_DEPOSIT_KINDS[kind]["currency"]
-    acc = _shamcash_get(token, "/accounts")
-    if acc.get("status") != "success":
-        return {"state": "api_error", "code": acc.get("code"), "message": acc.get("message")}
-    d = acc.get("data")
-    accounts = _sc_extract_list(d)
-    if not isinstance(accounts, list) or not accounts:
-        return {"state": "api_error", "code": "NO_ACCOUNT", "message": "لا يوجد حساب مرتبط بهذا التوكن"}
-    ids = []
-    for a in accounts:
-        if isinstance(a, dict) and a.get("id") is not None and str(a.get("status", "active")).lower() != "inactive":
-            ids.append(a.get("id"))
-    if not ids:
-        return {"state": "api_error", "code": "INACTIVE", "message": "حساب شام كاش غير مفعل"}
+    ids = None
+    _cached = _SC_ACC_CACHE.get(token)
+    if _cached and time.time() - _cached[0] < 300:
+        ids = _cached[1]
+    if ids is None:
+        acc = _shamcash_get(token, "/accounts")
+        if acc.get("status") != "success":
+            return {"state": "api_error", "code": acc.get("code"), "message": acc.get("message")}
+        d = acc.get("data")
+        accounts = _sc_extract_list(d)
+        if not isinstance(accounts, list) or not accounts:
+            return {"state": "api_error", "code": "NO_ACCOUNT", "message": "لا يوجد حساب مرتبط بهذا التوكن"}
+        ids = []
+        for a in accounts:
+            if isinstance(a, dict) and a.get("id") is not None and str(a.get("status", "active")).lower() != "inactive":
+                ids.append(a.get("id"))
+        if not ids:
+            return {"state": "api_error", "code": "INACTIVE", "message": "حساب شام كاش غير مفعل"}
+        _SC_ACC_CACHE[token] = (time.time(), ids)
 
     start_at = (datetime.now() - timedelta(days=AUTO_DEPOSIT_MAX_AGE_DAYS)).strftime("%Y-%m-%d")
     hard_err = None      # خطأ حقيقي (غير VALIDATION_ERROR)
@@ -20817,19 +20828,19 @@ def _sc_find_match(token, kind, tx_id, amount):
     ok_responses = 0
     for acc_id in ids[:5]:
         coin_map = {}
-        bal = _shamcash_get(token, "/balances", {"account_id": acc_id})
-        if bal.get("status") == "success":
-            coin_map = _sc_collect_coin_map(bal.get("data"))
-        else:
-            logging.warning("ShamCash-DBG: /balances فشل: %s %s" % (bal.get("code"), bal.get("message")))
         queries = []
         known = SHAMCASH_COIN_IDS.get(currency)
         if known is not None:
-            queries.append(known)
+            queries.append(known)   # السيرفر نفسه يفلتر بالعملة، فنوفر طلب /balances (حد 6 طلبات/دقيقة)
         else:
+            bal = _shamcash_get(token, "/balances", {"account_id": acc_id})
+            if bal.get("status") == "success":
+                coin_map = _sc_collect_coin_map(bal.get("data"))
+            else:
+                logging.warning("ShamCash-DBG: /balances فشل: %s %s" % (bal.get("code"), bal.get("message")))
             queries.extend([cid for cid, cur in coin_map.items() if cur == currency])
-        if None not in queries:
-            queries.append(None)   # احتياط: استعلام بدون فلتر عملة (لو تعيين coin_id طلع غلط)
+            if not queries:
+                queries.append(None)
         for cid in queries:
             for use_filter in (True, False):
                 txs, err = _sc_fetch_txs(token, acc_id, cid, tx_id, start_at, use_filter)
