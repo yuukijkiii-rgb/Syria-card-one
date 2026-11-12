@@ -3908,6 +3908,14 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
     </div>
 
     <div id="splashScreen">
+        <script>
+            // حماية مستقلة عن السكربت الرئيسي: لو ما اشتغل التحميل خلال 9 ثواني، أو علقت الشاشة 25 ثانية، نخفيها
+            (function () {
+                function hide() { var el = document.getElementById('splashScreen'); if (el) el.classList.add('hidden'); }
+                setTimeout(function () { if (!window.__splashStarted) hide(); }, 9000);
+                setTimeout(hide, 25000);
+            })();
+        </script>
         <img id="splashImg" src="" class="splash-logo" style="display:none;" />
         <video id="splashVideo" muted playsinline autoplay preload="auto" style="display:none;"></video>
         <div class="splash-spinner"></div>
@@ -5761,6 +5769,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
 
         async function loadSplashScreen() {
+            window.__splashStarted = true;
             // حماية: مهما صار، شاشة الترحيب تختفي خلال 8 ثواني (حتى لو الشبكة بطيئة أو الجهاز قديم)
             setTimeout(hideSplashScreen, 8000);
             let data = {};
@@ -7933,15 +7942,14 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             });
         }
 
-        initTheme();
-        applyAppearanceSettings();
-        prepareGoogle();
-        loadTickerSettings();
-        loadAnnouncement();
-        loadSplashScreen();
-        checkSavedSession();
-        loadBanners();
-        initData();
+        // كل دالة تشغيل بمعزل: لو وحدة فشلت (بيانات قديمة بالمتصفح مثلاً) ما توقف الباقي وما تعلّق شاشة الترحيب
+        [initTheme, applyAppearanceSettings, prepareGoogle, loadTickerSettings, loadAnnouncement,
+         loadSplashScreen, checkSavedSession, loadBanners, initData].forEach(function (fn) {
+            try {
+                var r = fn();
+                if (r && typeof r.catch === 'function') r.catch(function (e) { console.error('init async:', fn.name, e); });
+            } catch (e) { console.error('init failed:', fn && fn.name, e); }
+        });
     </script>
     <style id="fontOverrideStyle"></style>
     <link id="dynamicFontLink" rel="stylesheet" href="">
@@ -11553,16 +11561,26 @@ ADMIN_HTML_CONTENT = """
             if (!email || !password) { showErr('اكتب الإيميل وكلمة السر'); return; }
             _adminLoginBusy = true;
             if (btn) btn.disabled = true;
+            var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            var tmo = setTimeout(function () { if (ctl) ctl.abort(); }, 20000);
             try {
                 var res = await fetch('/api/admin_login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: email, password: password, auto: auto })
+                    body: JSON.stringify({ email: email, password: password, auto: auto }),
+                    signal: ctl ? ctl.signal : undefined
                 });
+                clearTimeout(tmo);
                 var d = await res.json();
-                if (d && d.status === 'success') { adminSessionStart(d); }
+                if (d && d.status === 'success') {
+                    try { adminSessionStart(d); }
+                    catch (e2) { console.error('adminSessionStart failed:', e2); showErr('تم الدخول لكن حصل خطأ بتحميل اللوحة: ' + (e2 && e2.message)); }
+                }
                 else { showErr((d && d.message) || 'البريد الإلكتروني أو كلمة السر غير صحيحة!'); }
-            } catch (e) { showErr('تعذر الاتصال بالسيرفر'); }
+            } catch (e) {
+                clearTimeout(tmo);
+                showErr(e && e.name === 'AbortError' ? 'السيرفر ما رد، جرّب مرة ثانية' : 'تعذر الاتصال بالسيرفر');
+            }
             _adminLoginBusy = false;
             if (btn) btn.disabled = false;
         }
@@ -21588,7 +21606,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
 
         elif self.path == "/service-worker.js":
             sw_code = '''
-const CACHE_NAME = 'syria-card-v5';
+const CACHE_NAME = 'syria-card-v6';
 
 self.addEventListener('install', event => {
     self.skipWaiting();
