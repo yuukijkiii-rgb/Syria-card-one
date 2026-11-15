@@ -3033,6 +3033,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 12px; padding: 10px 5px; }
         .item-card.sub-unavailable { opacity: 0.5; filter: grayscale(1); position: relative; }
+        .group-item-card.sub-unavailable { opacity: 0.5; filter: grayscale(1); position: relative; }
+        .group-item-card.sub-unavailable::after { content: "غير متوفر"; position: absolute; top: 8px; left: 8px; background: #dc2626; color: #fff; font-size: 0.62rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
         .item-card.sub-unavailable::after { content: "غير متوفر"; position: absolute; top: 8px; left: 8px; background: #dc2626; color: #fff; font-size: 0.62rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
         .item-card {
             background: transparent; border: none; display: flex; flex-direction: column;
@@ -4888,6 +4890,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         let isCounterCategory = false;
         let currentGroupId = null;
         let subcategoryGroups = {};
+        let suspendedState = { cats: [], products: [], groups: [] };
+        const MSG_UNAVAILABLE = 'هذا المنتج غير متوفر حالياً';
+        function isSubUnavailable(s) { return !!s && (s.api_available === false || s.suspended === true); }
 
         let dataStore = {
             categories: {},
@@ -5885,6 +5890,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         async function initData() {
             // نطلب كل شي بنفس الوقت، لكن نعرض الأقسام الرئيسية فور وصولها بدون انتظار الباقي
             const pCats = fetch('/api/categories').then(r => r.json());
+            const pSusp = fetch('/api/suspended_state').then(r => r.json()).then(s => { suspendedState = s; }).catch(() => {});
             const pRest = Promise.all([
                 fetch('/api/products').then(r => r.json()),
                 fetch('/api/subcategories').then(r => r.json()),
@@ -5903,6 +5909,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             try {
                 dataStore.categories = await pCats;
             } catch (e) { console.error(e); }
+            await pSusp;
             renderCategories();
         }
 
@@ -6492,7 +6499,13 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 const card = document.createElement('div');
                 card.className = 'item-card';
                 card.style.transform = `scale(var(--category-card-scale))`;
-                card.onclick = async () => { if (window._restDataPromise) await window._restDataPromise; openProductsView(name); };
+                const catOff = suspendedState.cats.indexOf(name) !== -1;
+                if (catOff) card.classList.add('sub-unavailable');
+                card.onclick = async () => {
+                    if (catOff) { showTopNotification(MSG_UNAVAILABLE); return; }
+                    if (window._restDataPromise) await window._restDataPromise;
+                    openProductsView(name);
+                };
 
                 let imgHTML = img ? `<img src="${img}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('game','item-img')}`;
                 card.innerHTML = `${imgHTML}<div class="item-label">${name}</div>`;
@@ -6533,7 +6546,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     const card = document.createElement('div');
                     card.className = 'item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
-                    card.onclick = () => openSubcategoriesView(p.name);
+                    const prodOff = suspendedState.products.indexOf(p.name) !== -1;
+                    if (prodOff) card.classList.add('sub-unavailable');
+                    card.onclick = () => { if (prodOff) { showTopNotification(MSG_UNAVAILABLE); return; } openSubcategoriesView(p.name); };
 
                     let imgHTML = p.image ? `<img src="${p.image}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('box','item-img')}`;
                     card.innerHTML = `${imgHTML}<div class="item-label">${p.name}</div>`;
@@ -6579,7 +6594,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     const card = document.createElement('div');
                     card.className = 'group-item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
-                    card.onclick = () => openGroupView(productName, g.id, g.name);
+                    const grpOff = suspendedState.groups.indexOf(g.id) !== -1;
+                    if (grpOff) card.classList.add('sub-unavailable');
+                    card.onclick = () => { if (grpOff) { showTopNotification(MSG_UNAVAILABLE); return; } openGroupView(productName, g.id, g.name); };
 
                     let imgHTML = g.image ? `<img src="${g.image}" class="group-item-img" />` : `${codeEmoji('folder','group-item-img')}`;
 
@@ -6595,7 +6612,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     card.className = 'item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
                     card.onclick = () => openPurchaseModal(s);
-                    if (s.api_available === false) card.classList.add('sub-unavailable');
+                    if (isSubUnavailable(s)) card.classList.add('sub-unavailable');
 
                     let imgHTML = s.image ? `<img src="${s.image}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('gem','item-img')}`;
 
@@ -6645,7 +6662,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     card.className = 'item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
                     card.onclick = () => openPurchaseModal(s);
-                    if (s.api_available === false) card.classList.add('sub-unavailable');
+                    if (isSubUnavailable(s)) card.classList.add('sub-unavailable');
 
                     let imgHTML = s.image ? `<img src="${s.image}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('gem','item-img')}`;
 
@@ -7341,8 +7358,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         document.getElementById('walletDateTo').addEventListener('change', renderMyWallet);
 
         function openPurchaseModal(subcat) {
-            if (subcat && subcat.api_available === false) {
-                alert('هذه الفئة غير متوفرة حالياً، جرّب لاحقاً');
+            if (isSubUnavailable(subcat)) {
+                showTopNotification(MSG_UNAVAILABLE);
                 return;
             }
             activeSubCategory = subcat;
@@ -8383,6 +8400,12 @@ ADMIN_HTML_CONTENT = """
         .ims-ord:focus { border-color: #f5c76b; box-shadow: 0 0 0 2px rgba(245,199,107,0.25); }
         body.light-mode-admin .ims-ord { background: #fff; color: #a16207; }
         .ims-pen { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: 1px solid rgba(245,199,107,0.6); background: rgba(245,199,107,0.08); font-size: 1.05rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; padding: 0; }
+        .ims-sus { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: 1px solid rgba(239,68,68,0.6); background: rgba(239,68,68,0.08); color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; padding: 0; }
+        .ims-sus:hover { background: rgba(239,68,68,0.22); transform: scale(1.08); }
+        .ims-sus.on { border-color: rgba(34,197,94,0.7); background: rgba(34,197,94,0.12); color: #22c55e; }
+        .ims-sus svg { width: 18px; height: 18px; fill: currentColor; }
+        .ims-row.ims-off .ims-name { opacity: 0.5; text-decoration: line-through; }
+        .ims-row.ims-off .ims-name::after { content: " • موقوف"; color: #ef4444; font-size: 0.7rem; text-decoration: none; display: inline-block; }
         .ims-pen:hover { background: rgba(245,199,107,0.22); transform: scale(1.08) rotate(-8deg); }
         .ims-children { display: none; flex-direction: column; gap: 8px; margin-right: 20px; padding-right: 14px; border-right: 2px solid rgba(74,222,128,0.28); }
         .ims-children.open { display: flex; }
@@ -13030,7 +13053,7 @@ ADMIN_HTML_CONTENT = """
             }
             box.innerHTML = imsSections.map(function (s, i) {
                 return '<div class="ims-node">' +
-                    '<div class="ims-row" onclick="imsToggleSection(' + i + ')">' +
+                    '<div class="ims-row' + (s.suspended ? ' ims-off' : '') + '" onclick="imsToggleSection(' + i + ')">' +
                         '<div class="ims-row-right">' +
                             '<span class="ims-chevron" id="imsChev' + i + '">◂</span>' +
                             imsThumb(s.image, 'game') +
@@ -13041,6 +13064,7 @@ ADMIN_HTML_CONTENT = """
                         '</div>' +
                         '<div class="ims-row-left" onclick="event.stopPropagation()">' +
                             '<input type="number" min="1" class="ims-ord" title="ترتيب القسم (1 = أول قسم)" value="' + imsEsc(s.order) + '" onclick="event.stopPropagation()" onkeydown="if(event.keyCode===13){this.blur();}" onchange="imsSetOrder(0,' + i + ',-1,this.value)">' +
+                            imsSusBtn('imsSuspendSection(' + i + ')', s.suspended, 'القسم') +
                             '<button class="ims-pen" title="تعديل" onclick="event.stopPropagation(); imsOpenMainEdit(' + i + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
                         '</div>' +
                     '</div>' +
@@ -13101,6 +13125,57 @@ ADMIN_HTML_CONTENT = """
             return t;
         }
 
+        function imsSusIcon(on) {
+            return on ? '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>'
+                      : '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+        }
+        function imsSusBtn(fn, on, what) {
+            return '<button class="ims-sus' + (on ? ' on' : '') + '" title="' + (on ? 'تشغيل ' : 'إيقاف ') + what + '" onclick="event.stopPropagation(); ' + fn + '">' + imsSusIcon(on) + '</button>';
+        }
+        async function imsPostSuspend(body, obj, after) {
+            const want = !obj.suspended;
+            body.suspended = want;
+            try {
+                const res = await fetch('/api/ims_set_suspended', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const data = await res.json();
+                if (data.status !== 'success') { imsToast(data.message || 'تعذر التنفيذ', true); return; }
+                obj.suspended = want;
+                imsToast(data.message || 'تم');
+                after();
+            } catch (e) {
+                imsToast('تعذر الاتصال بالسيرفر', true);
+            }
+        }
+        function imsSuspendSection(i) {
+            const s = imsSections[i];
+            if (!s) return;
+            imsPostSuspend({ kind: 'section', import_key: s.import_key }, s, function () { imsRenderSections(); });
+        }
+        function imsSuspendSub(i, j) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            if (!p) return;
+            imsPostSuspend({ kind: 'sub', import_key: s.import_key, name: p.name }, p, function () { imsRenderSubs(i); });
+        }
+        function imsSuspendGrp(i, j, gi) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const d = p && imsItemsCache[imsSubKey(s, p)];
+            const g = d && d.groups[gi];
+            if (!g) return;
+            imsPostSuspend({ kind: 'group', import_key: s.import_key, product: p.name, group_id: g.id }, g, function () { imsRenderItems(i, j); });
+        }
+        function imsSuspendItem(i, j, idx) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const d = p && imsItemsCache[imsSubKey(s, p)];
+            if (!d) return;
+            let it = d.items.find(function (x) { return x.idx === idx; });
+            if (!it) { d.groups.forEach(function (g) { const f = g.items.find(function (x) { return x.idx === idx; }); if (f) it = f; }); }
+            if (!it) return;
+            imsPostSuspend({ kind: 'item', import_key: s.import_key, product: p.name, idx: it.idx, old_name: it.name }, it, function () { imsRenderItems(i, j); });
+        }
+
         function imsSubKey(s, p) { return s.import_key + '||' + p.name; }
 
         function imsRenderSubs(i) {
@@ -13114,7 +13189,7 @@ ADMIN_HTML_CONTENT = """
             kids.innerHTML = items.map(function (p, j) {
                 const id = i + '_' + j;
                 return '<div class="ims-node">' +
-                    '<div class="ims-row ims-row-sub" onclick="imsToggleSub(' + i + ',' + j + ')">' +
+                    '<div class="ims-row ims-row-sub' + (p.suspended ? ' ims-off' : '') + '" onclick="imsToggleSub(' + i + ',' + j + ')">' +
                         '<div class="ims-row-right">' +
                             '<span class="ims-chevron" id="imsSubChev' + id + '">◂</span>' +
                             imsThumb(p.image, 'box') +
@@ -13125,6 +13200,7 @@ ADMIN_HTML_CONTENT = """
                         '</div>' +
                         '<div class="ims-row-left" onclick="event.stopPropagation()">' +
                             '<input type="number" min="1" class="ims-ord" title="ترتيب القسم الفرعي (1 = أول قسم)" value="' + imsEsc(p.order) + '" onclick="event.stopPropagation()" onkeydown="if(event.keyCode===13){this.blur();}" onchange="imsSetOrder(1,' + i + ',' + j + ',this.value)">' +
+                            imsSusBtn('imsSuspendSub(' + i + ',' + j + ')', p.suspended, 'القسم الفرعي') +
                             '<button class="ims-pen" title="تعديل" onclick="event.stopPropagation(); imsOpenSubEdit(' + i + ',' + j + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
                         '</div>' +
                     '</div>' +
@@ -13183,7 +13259,7 @@ ADMIN_HTML_CONTENT = """
             const tag = it.is_api ? '<span class="ims-tag api">API</span>' : '<span class="ims-tag">يدوي</span>';
             const mg = it.is_api ? ' • ربح ' + imsFmtNum(it.profit_margin) + '%' : '';
             const unit = it.is_counter ? ' (للحبة)' : '';
-            return '<div class="ims-row ims-row-sub ims-row-item">' +
+            return '<div class="ims-row ims-row-sub ims-row-item' + (it.suspended ? ' ims-off' : '') + '">' +
                 '<div class="ims-row-right">' +
                     imsThumb(it.image, 'box') +
                     '<div class="ims-names">' +
@@ -13192,6 +13268,7 @@ ADMIN_HTML_CONTENT = """
                     '</div>' +
                 '</div>' +
                 '<div class="ims-row-left">' +
+                    imsSusBtn('imsSuspendItem(' + i + ',' + j + ',' + it.idx + ')', it.suspended, 'الفئة') +
                     '<button class="ims-pen" title="تعديل الفئة" onclick="imsOpenItemEdit(' + i + ',' + j + ',' + it.idx + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
                 '</div>' +
             '</div>';
@@ -13213,7 +13290,7 @@ ADMIN_HTML_CONTENT = """
                 const gid = i + '_' + j + '_' + gi;
                 const isOpen = !!imsOpenGrps[k + '||' + g.id];
                 html += '<div class="ims-node">' +
-                    '<div class="ims-row ims-row-sub" onclick="imsToggleGrp(' + i + ',' + j + ',' + gi + ')">' +
+                    '<div class="ims-row ims-row-sub' + (g.suspended ? ' ims-off' : '') + '" onclick="imsToggleGrp(' + i + ',' + j + ',' + gi + ')">' +
                         '<div class="ims-row-right">' +
                             '<span class="ims-chevron' + (isOpen ? ' open' : '') + '" id="imsGrpChev' + gid + '">◂</span>' +
                             imsThumb(g.image, 'box') +
@@ -13223,6 +13300,7 @@ ADMIN_HTML_CONTENT = """
                             '</div>' +
                         '</div>' +
                         '<div class="ims-row-left" onclick="event.stopPropagation()">' +
+                            imsSusBtn('imsSuspendGrp(' + i + ',' + j + ',' + gi + ')', g.suspended, 'المنتج') +
                             '<button class="ims-pen" title="تعديل المنتج" onclick="event.stopPropagation(); imsOpenGrpEdit(' + i + ',' + j + ',' + gi + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
                         '</div>' +
                     '</div>' +
@@ -20647,6 +20725,90 @@ def find_subcategory(product_name, sub_name, api_product_id=''):
     return cands[0] if cands else None
 
 
+def sub_is_suspended(sub):
+    """هل الفئة موقوفة يدوياً (هي نفسها أو المنتج أو القسم الفرعي أو القسم الرئيسي)؟"""
+    if sub.get('suspended'):
+        return True
+    prod_name = sub.get('product')
+    gid = sub.get('group_id')
+    if gid:
+        for g in SUBCATEGORY_GROUPS_DATA.get(prod_name, []):
+            if g.get('id') == gid and g.get('suspended'):
+                return True
+    prod = next((p for p in PRODUCTS_DATA if p.get('name') == prod_name), None)
+    if prod is not None:
+        if prod.get('suspended'):
+            return True
+        cat = prod.get('category')
+        if cat and any(v.get('suspended') and v.get('category_name') == cat
+                       for v in API_IMPORTS_DATA.values()):
+            return True
+    return False
+
+
+def get_suspended_state():
+    """الأقسام / الأقسام الفرعية / المنتجات الموقوفة (للواجهة). الفئات الموقوفة تجي بحقل suspended داخل بياناتها."""
+    with DATA_LOCK:
+        cats = sorted({v.get('category_name') for v in API_IMPORTS_DATA.values()
+                       if v.get('suspended') and v.get('category_name')})
+        prods = [p.get('name') for p in PRODUCTS_DATA if p.get('suspended')]
+        groups = [g.get('id') for gl in SUBCATEGORY_GROUPS_DATA.values()
+                  for g in gl if g.get('suspended')]
+    return {"cats": cats, "products": prods, "groups": groups}
+
+
+def ims_set_suspended(data):
+    """إيقاف / تشغيل قسم أو قسم فرعي أو منتج أو فئة (مسحوبة) من واجهة تعديل قسم مسحوب."""
+    kind = data.get('kind')
+    key = data.get('import_key')
+    want = bool(data.get('suspended'))
+    with DATA_LOCK:
+        info = API_IMPORTS_DATA.get(key)
+        if not info:
+            return {"status": "error", "message": "القسم المسحوب غير موجود!"}
+        if kind == 'section':
+            target, fname, store = info, API_IMPORTS_FILE, API_IMPORTS_DATA
+            label = "القسم"
+        elif kind == 'sub':
+            target, err = _ims_find_product(key, data.get('name'))
+            if err:
+                return {"status": "error", "message": err}
+            fname, store, label = PRODUCTS_FILE, PRODUCTS_DATA, "القسم الفرعي"
+        elif kind == 'group':
+            product = data.get('product')
+            _p, err = _ims_find_product(key, product)
+            if err:
+                return {"status": "error", "message": err}
+            target = next((g for g in SUBCATEGORY_GROUPS_DATA.get(product, [])
+                           if g.get('id') == data.get('group_id')), None)
+            if target is None:
+                return {"status": "error", "message": "المنتج غير موجود، حدّث الصفحة وجرّب مرة ثانية!"}
+            fname, store, label = SUBCATEGORY_GROUPS_FILE, SUBCATEGORY_GROUPS_DATA, "المنتج"
+        elif kind == 'item':
+            product = data.get('product')
+            _p, err = _ims_find_product(key, product)
+            if err:
+                return {"status": "error", "message": err}
+            try:
+                idx = int(data.get('idx'))
+            except (TypeError, ValueError):
+                return {"status": "error", "message": "الفئة غير معروفة!"}
+            if idx < 0 or idx >= len(SUBCATEGORIES_DATA):
+                return {"status": "error", "message": "الفئة غير موجودة، حدّث الصفحة وجرّب مرة ثانية!"}
+            target = SUBCATEGORIES_DATA[idx]
+            if target.get('product') != product or target.get('name') != data.get('old_name'):
+                return {"status": "error", "message": "البيانات تغيّرت، حدّث الصفحة وجرّب مرة ثانية!"}
+            fname, store, label = SUBCATEGORIES_FILE, SUBCATEGORIES_DATA, "الفئة"
+        else:
+            return {"status": "error", "message": "نوع غير معروف"}
+        if want:
+            target['suspended'] = True
+        else:
+            target.pop('suspended', None)
+        save_json_file(fname, store)
+    return {"status": "success", "message": f"تم إيقاف {label}" if want else f"تم تشغيل {label}"}
+
+
 def sub_total_price(sub, quantity):
     """يعيد (ok, message, qty, total). العدادات: الكمية × سعر الحبة الواحدة."""
     try:
@@ -20701,7 +20863,9 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
     if sub is None:
         return {"status": "error", "message": "هذه الفئة لم تعد موجودة، حدّث الصفحة وحاول مرة ثانية"}
     if sub.get('api_available') is False:
-        return {"status": "error", "message": "هذه الفئة غير متوفرة حالياً، جرّب لاحقاً"}
+        return {"status": "error", "message": "هذا المنتج غير متوفر حالياً"}
+    if sub_is_suspended(sub):
+        return {"status": "error", "message": "هذا المنتج غير متوفر حالياً"}
 
     ok, msg, quantity, price = sub_total_price(sub, quantity)
     if not ok:
@@ -20863,6 +21027,7 @@ def ims_get_sections():
                 "subsections_count": len(prods),
                 "items_count": items,
                 "status": info.get('status', ''),
+                "suspended": bool(info.get('suspended')),
                 "order": (list(CATEGORIES_DATA.keys()).index(cat) + 1)
             })
         out.sort(key=lambda x: x["order"])
@@ -20883,6 +21048,7 @@ def ims_get_subsections(key):
                 "order": (cat_names.index(name) + 1) if name in cat_names else 0,
                 "name": name,
                 "image": p.get('image') or '',
+                "suspended": bool(p.get('suspended')),
                 "groups_count": len(SUBCATEGORY_GROUPS_DATA.get(name, [])),
                 "items_count": sum(1 for s in SUBCATEGORIES_DATA if s.get('product') == name)
             })
@@ -21114,6 +21280,7 @@ def _ims_item_view(s, idx):
         "profit_margin": _num(s.get('profit_margin', 0)),
         "is_api": bool(s.get('api_product_id') and s.get('provider_name')),
         "is_counter": is_ctr,
+        "suspended": bool(s.get('suspended')),
     }
 
 
@@ -21125,7 +21292,8 @@ def ims_get_items(key, product):
         gmap = {}
         for g in SUBCATEGORY_GROUPS_DATA.get(product, []):
             gmap[g.get('id')] = {"id": g.get('id'), "name": g.get('name') or '',
-                                 "image": g.get('image') or '', "items": []}
+                                 "image": g.get('image') or '', "items": [],
+                                 "suspended": bool(g.get('suspended'))}
         loose = []
         for idx, s in enumerate(SUBCATEGORIES_DATA):
             if s.get('product') != product:
@@ -21516,6 +21684,7 @@ ADMIN_PATH_PERMS = {
     "/api/update_deposit_method": "deposits",
     "/api/update_currency": "deposits",
     "/api/ims_set_order": "products",
+    "/api/ims_set_suspended": "products",
     "/api/set_client_discount": "clients",
     "/api/remove_client_discount": "clients",
     "/api/inspect_client": "clients",
@@ -21579,6 +21748,7 @@ ADMIN_ACTION_LABELS = {
     "/api/update_deposit_method": "تعديل طريقة إيداع",
     "/api/update_currency": "تعديل عملة",
     "/api/ims_set_order": "ترتيب الأقسام المسحوبة",
+    "/api/ims_set_suspended": "إيقاف/تشغيل قسم أو منتج أو فئة",
     "/api/set_client_discount": "إضافة خصم لعميل",
     "/api/remove_client_discount": "إزالة خصم عميل",
     "/api/toggle_user_api": "تفعيل/إيقاف API لعميل",
@@ -23616,6 +23786,9 @@ self.addEventListener('fetch', event => {
         elif self.path == "/api/subcategories":
             self._send_json_fast(SUBCATEGORIES_DATA)
 
+        elif self.path == "/api/suspended_state":
+            self._send_json_fast(get_suspended_state())
+
         elif self.path.split("?")[0] == "/api/get_deposit_methods":
             _methods = list(DEPOSIT_METHODS_DATA)
             if "manual=1" not in self.path:
@@ -25512,6 +25685,9 @@ self.addEventListener('fetch', event => {
 
         elif self.path == "/api/ims_set_order":
             self._send_json_fast(ims_set_order(data))
+
+        elif self.path == "/api/ims_set_suspended":
+            self._send_json_fast(ims_set_suspended(data))
 
         elif self.path == "/api/link_telegram":
             ok, message = telegram_link_verify(data.get('email', ''), data.get('code', ''), self.client_address[0] if self.client_address else '')
