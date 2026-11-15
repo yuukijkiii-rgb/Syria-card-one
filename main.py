@@ -436,6 +436,9 @@ DEFAULT_APPEARANCE = {
     "bottom_nav_height": 62,
     "sidebar_width": 300,
     "deposit_card_size": 100,
+    "deposit_modal_width": 100,
+    "deposit_modal_height": 92,
+    "deposit_modal_scale": 100,
     "category_card_size": 100,
     "order_card_size": 100,
     "price_font_size": 13,
@@ -814,6 +817,10 @@ if "sidebar_width" not in APPEARANCE_DATA:
 if "deposit_card_size" not in APPEARANCE_DATA:
     APPEARANCE_DATA["deposit_card_size"] = 100
     save_json_file(APPEARANCE_FILE, APPEARANCE_DATA)
+for _dk, _dv in (("deposit_modal_width", 100), ("deposit_modal_height", 92), ("deposit_modal_scale", 100)):
+    if _dk not in APPEARANCE_DATA:
+        APPEARANCE_DATA[_dk] = _dv
+        save_json_file(APPEARANCE_FILE, APPEARANCE_DATA)
 if "category_card_size" not in APPEARANCE_DATA:
     APPEARANCE_DATA["category_card_size"] = 100
     save_json_file(APPEARANCE_FILE, APPEARANCE_DATA)
@@ -2505,6 +2512,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             --bottom-nav-height: 62px;
             --sidebar-width: 300px;
             --deposit-card-scale: 1;
+            --dx-width-scale: 1;
+            --dx-max-h: 92;
+            --dx-content-scale: 1;
             --order-card-scale: 1;
             --category-card-scale: 1;
             --ticker-color: #38bdf8;
@@ -3385,13 +3395,14 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             background: radial-gradient(420px 240px at 100% 0%, rgba(218,165,32,0.18), transparent 70%),
                         radial-gradient(360px 200px at 0% 100%, rgba(56,189,248,0.07), transparent 70%),
                         linear-gradient(170deg, #18152f 0%, #0d0b1e 100%);
-            border: 1px solid rgba(218,165,32,0.4); border-radius: 26px; width: 94%; max-width: 410px;
-            max-height: 92vh; overflow-y: auto; padding: 0; display: flex; flex-direction: column; position: relative;
+            border: 1px solid rgba(218,165,32,0.4); border-radius: 26px; width: min(98%, calc(94% * var(--dx-width-scale, 1))); max-width: calc(410px * var(--dx-width-scale, 1));
+            max-height: calc(var(--dx-max-h, 92) * 1vh); overflow-y: auto; padding: 0; display: flex; flex-direction: column; position: relative;
             box-shadow: 0 24px 70px rgba(0,0,0,0.75), 0 0 40px rgba(218,165,32,0.08), inset 0 1px 0 rgba(255,255,255,0.06);
             scrollbar-width: none; animation: dxPop 0.35s cubic-bezier(.2,.9,.3,1.2);
         }
         .dx-box::-webkit-scrollbar { display: none; }
-        .dx-page { max-width: 520px; width: 100%; margin: 0 auto; max-height: none; overflow: visible; animation: none; }
+        .dx-box .dx-hero, .dx-box .dx-body { zoom: var(--dx-content-scale, 1); }
+        .dx-page { max-width: calc(520px * var(--dx-width-scale, 1)); width: 100%; margin: 0 auto; max-height: none; overflow: visible; animation: none; }
         @keyframes dxPop { from { transform: translateY(18px) scale(.96); opacity: 0; } to { transform: none; opacity: 1; } }
         .dx-hero { position: relative; padding: 26px 18px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; border-bottom: 1px solid rgba(218,165,32,0.18); overflow: hidden; }
         .dx-hero::before { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(110deg, transparent, rgba(255,255,255,0.07), transparent); transform: skewX(-20deg); animation: dxSheen 5s ease-in-out infinite; pointer-events: none; }
@@ -4996,6 +5007,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 if (a.bottom_nav_height) root.style.setProperty('--bottom-nav-height', a.bottom_nav_height + 'px');
                 if (a.sidebar_width) root.style.setProperty('--sidebar-width', a.sidebar_width + 'px');
                 if (a.deposit_card_size) root.style.setProperty('--deposit-card-scale', (a.deposit_card_size / 100).toFixed(2));
+                if (a.deposit_modal_width) root.style.setProperty('--dx-width-scale', (a.deposit_modal_width / 100).toFixed(2));
+                if (a.deposit_modal_height) root.style.setProperty('--dx-max-h', String(a.deposit_modal_height));
+                if (a.deposit_modal_scale) root.style.setProperty('--dx-content-scale', (a.deposit_modal_scale / 100).toFixed(2));
                 if (a.category_card_size) root.style.setProperty('--category-card-scale', (a.category_card_size / 100).toFixed(2));
                 if (a.order_card_size) root.style.setProperty('--order-card-scale', (a.order_card_size / 100).toFixed(2));
                 if (a.price_font_size) root.style.setProperty('--price-font-size', a.price_font_size + 'px');
@@ -8401,6 +8415,13 @@ ADMIN_HTML_CONTENT = """
         .ims-cancel { background: #27272a; color: #fff; border: none; padding: 10px; border-radius: 12px; font-weight: 700; cursor: pointer; }
         .ims-toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 100010; background: #16a34a; color: #fff; padding: 11px 18px; border-radius: 12px; font-size: 0.82rem; font-weight: 700; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-width: 90vw; text-align: center; }
         .ims-toast.err { background: #dc2626; }
+        .ims-row-sub { cursor: pointer; }
+        .ims-row-item { cursor: default; padding: 7px 10px; }
+        .ims-children .ims-children { margin-right: 12px; padding-right: 12px; border-right-color: rgba(96,165,250,0.35); }
+        .ims-tag { font-size: 0.6rem; font-weight: 800; padding: 1px 7px; border-radius: 99px; border: 1px solid #52525b; color: #a1a1aa; margin-right: 4px; }
+        .ims-tag.api { border-color: rgba(74,222,128,0.6); color: #4ade80; }
+        .ims-item-note { font-size: 0.68rem; color: #a1a1aa; line-height: 1.6; }
+        .ims-field textarea { min-height: 70px; resize: vertical; }
         .api-provider-select-box { width: 100%; padding: 16px; background: #121212; border: 1px solid #27272a; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
         body.light-mode-admin .api-provider-select-box { background: #ffffff; border-color: #e4e4e7; }
         .api-provider-select-box select { padding: 14px; background: #000; border: 1px solid #38bdf8; border-radius: 10px; color: #fff; font-size: 0.95rem; font-weight: 700; outline: none; cursor: pointer; }
@@ -9248,7 +9269,7 @@ ADMIN_HTML_CONTENT = """
                 <button class="sub-menu-btn" onclick="openCheckDepositsPage()">تشييك الايداعات</button>
                 <button class="sub-menu-btn" onclick="openAddDepositMethodModal()">اضافة طريقة</button>
                 <button class="sub-menu-btn" onclick="openDeleteDepositMethodModal()">حذف طريقة</button>
-                <button class="sub-menu-btn" onclick="openViewDepositMethodsModal()">عرض الطرق المضافة</button>
+                <button class="sub-menu-btn" onclick="openViewDepositMethodsModal()">عرض / تعديل الطرق المضافة</button>
                 <button class="sub-menu-btn" onclick="openAutoDepositAdmin()" style="color:#e8c26a; border-color:#e8c26a; font-weight:800;"><svg class="ic" style="color:#fff;"><use href="#i-zap"/></svg> ادارة الايداعات التلقائية</button>
                 <button class="sub-menu-btn" onclick="openAutoDepositHistory()" style="color:#34d399; border-color:#34d399; font-weight:800;"><svg class="ic"><use href="#i-receipt"/></svg> عرض الايداعات تلقائية</button>
                 <button class="sub-menu-btn" onclick="openAddCurrencyModal()" style="color:#f59e0b; border-color:#f59e0b;">ادارة العملات</button>
@@ -10496,7 +10517,7 @@ ADMIN_HTML_CONTENT = """
                     <span class="ims-title"><span><svg class="ic"><use href="#i-layers"/></svg></span><span>تعديل قسم مسحوب</span></span>
                     <button class="btn-secondary" onclick="closeImportedSectionsScreen()">رجوع</button>
                 </div>
-                <div class="ims-hint">هاد الأقسام يلي سحبتها من الـ API. اكبس على القسم لتشوف أقسامه الفرعية، واكبس على <svg class="ic"><use href="#i-pencil"/></svg> لتعدّل الاسم والصورة (ونسبة الربح للقسم الرئيسي).</div>
+                <div class="ims-hint">هاد الأقسام يلي سحبتها من الـ API. اكبس على القسم لتشوف أقسامه الفرعية، واكبس على القسم الفرعي لتشوف منتجاته وفئاته. وبكل مستوى (قسم رئيسي ← قسم فرعي ← منتج ← فئة) اكبس على <svg class="ic"><use href="#i-pencil"/></svg> لتعدّل الاسم والصورة، وللقسم الرئيسي نسبة الربح، وللفئة كمان الوصف والسعر ونسبة الربح.</div>
                 <div id="imsList" style="display:flex; flex-direction:column; gap:12px;"></div>
             </div>
 
@@ -10547,6 +10568,61 @@ ADMIN_HTML_CONTENT = """
                     </button>
                     <button class="ims-save" id="imsSubSave" onclick="imsSaveSub()">حفظ التعديلات</button>
                     <button class="ims-cancel" onclick="imsCloseModal('imsSubModal')">إلغاء</button>
+                </div>
+            </div>
+
+            <div class="ims-modal-overlay" id="imsGrpModal">
+                <div class="ims-modal-box">
+                    <div class="ims-modal-head"><span><svg class="ic"><use href="#i-pencil"/></svg></span><span>تعديل المنتج</span></div>
+                    <div class="ims-field">
+                        <label>1. اسم المنتج الجديد</label>
+                        <input type="text" id="imsGrpName" placeholder="اسم المنتج الجديد...">
+                    </div>
+                    <div class="ims-field">
+                        <label>2. صورة المنتج الجديدة</label>
+                        <div class="ims-img-pick">
+                            <div class="ims-img-prev" id="imsGrpPrev"><svg class="ic"><use href="#i-image"/></svg></div>
+                            <input type="file" id="imsGrpFile" accept="image/*" onchange="imsPickImage('grp', this)">
+                        </div>
+                    </div>
+                    <button type="button" class="ims-toggle" id="imsGrpApplyBtn" onclick="imsToggleApply('grp')">
+                        <span class="ims-toggle-switch"></span>
+                        <span>تطبيق صورة المنتج على جميع فئاته</span>
+                    </button>
+                    <button class="ims-save" id="imsGrpSave" onclick="imsSaveGrp()">حفظ التعديلات</button>
+                    <button class="ims-cancel" onclick="imsCloseModal('imsGrpModal')">إلغاء</button>
+                </div>
+            </div>
+
+            <div class="ims-modal-overlay" id="imsItemModal">
+                <div class="ims-modal-box">
+                    <div class="ims-modal-head"><span><svg class="ic"><use href="#i-pencil"/></svg></span><span>تعديل الفئة</span></div>
+                    <div class="ims-field">
+                        <label>1. اسم الفئة</label>
+                        <input type="text" id="imsItemName" placeholder="اسم الفئة...">
+                    </div>
+                    <div class="ims-field">
+                        <label>2. صورة الفئة الجديدة</label>
+                        <div class="ims-img-pick">
+                            <div class="ims-img-prev" id="imsItemPrev"><svg class="ic"><use href="#i-image"/></svg></div>
+                            <input type="file" id="imsItemFile" accept="image/*" onchange="imsPickImage('item', this)">
+                        </div>
+                    </div>
+                    <div class="ims-field">
+                        <label>3. وصف الفئة</label>
+                        <textarea id="imsItemDesc" rows="3" placeholder="وصف الفئة..."></textarea>
+                    </div>
+                    <div class="ims-field">
+                        <label id="imsItemPriceLbl">4. السعر ($)</label>
+                        <input type="number" id="imsItemPrice" step="any" min="0" oninput="imsItemLink('price')">
+                    </div>
+                    <div class="ims-field" id="imsItemMarginWrap">
+                        <label>5. نسبة الربح (%)</label>
+                        <input type="number" id="imsItemMargin" step="any" min="0" oninput="imsItemLink('margin')">
+                    </div>
+                    <div class="ims-item-note" id="imsItemNote"></div>
+                    <button class="ims-save" id="imsItemSave" onclick="imsSaveItem()">حفظ التعديلات</button>
+                    <button class="ims-cancel" onclick="imsCloseModal('imsItemModal')">إلغاء</button>
                 </div>
             </div>
         </div>
@@ -10840,6 +10916,10 @@ ADMIN_HTML_CONTENT = """
         <div class="modal-overlay" id="addCurrencyModalOverlay">
             <div class="modal-box">
                 <div class="modal-title">إدارة العملات</div>
+                <div id="currencyEditBanner" style="display:none; background:rgba(37,99,235,0.15); border:1px solid #2563eb; border-radius:8px; padding:8px 10px; font-size:0.78rem; color:#93c5fd; justify-content:space-between; align-items:center; gap:8px;">
+                    <span>وضع التعديل: <b id="currencyEditName"></b></span>
+                    <button type="button" onclick="cancelEditCurrency()" style="background:#27272a; color:#fff; border:none; border-radius:6px; padding:5px 10px; font-size:0.72rem; cursor:pointer; width:auto;">إلغاء التعديل</button>
+                </div>
                 <div class="form-group">
                     <label>1. اسم العملة:</label>
                     <input type="text" id="currencyNameInput" placeholder="مثال: ليرة سورية" required>
@@ -10852,7 +10932,7 @@ ADMIN_HTML_CONTENT = """
                     <label>3. سعر الصرف (مقابل الدولار):</label>
                     <input type="number" id="currencyRateInput" placeholder="مثال: 10000" step="0.01" required>
                 </div>
-                <button class="save-btn" onclick="saveCurrency()">حفظ</button>
+                <button class="save-btn" id="currencySaveBtn" onclick="saveCurrency()">حفظ</button>
                 <button class="btn-secondary" onclick="closeModal('addCurrencyModalOverlay')">إغلاق</button>
                 <div style="margin-top:10px; border-top:1px solid #27272a; padding-top:12px;">
                     <div style="font-size:0.85rem; font-weight:700; color:#f59e0b; margin-bottom:8px;">العملات المضافة:</div>
@@ -11156,6 +11236,39 @@ ADMIN_HTML_CONTENT = """
                 <div class="modal-title">طرق الإيداع المضافة</div>
                 <div id="depositMethodsList" style="display:flex; flex-direction:column; gap:10px;"></div>
                 <button class="save-btn" onclick="closeModal('viewDepositMethodsModal')">إغلاق</button>
+            </div>
+        </div>
+
+        <div class="modal-overlay" id="editDepositMethodModal">
+            <div class="modal-box" style="max-height: 90vh; overflow-y: auto;">
+                <div class="modal-title">تعديل طريقة إيداع</div>
+                <div class="form-group">
+                    <label>1. اسم الطريقة:</label>
+                    <input type="text" id="editDepName" placeholder="اسم الطريقة...">
+                </div>
+                <div class="form-group">
+                    <label>2. وصف الطريقة:</label>
+                    <textarea id="editDepDescription" rows="3" placeholder="وصف أو تعليمات الطريقة..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>3. سعر صرف الطريقة:</label>
+                    <input type="number" id="editDepRate" step="any" placeholder="سعر الصرف...">
+                </div>
+                <div class="form-group">
+                    <label>4. صورة الطريقة (اتركها فاضية لتبقى الصورة الحالية):</label>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img id="editDepImgPrev" alt="" style="width:52px; height:52px; border-radius:10px; object-fit:cover; display:none; flex-shrink:0;">
+                        <input type="file" id="editDepImageInput" accept="image/*">
+                    </div>
+                    <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.75rem;"><input type="checkbox" id="editDepRemoveImg" style="width:auto;"> حذف الصورة الحالية</label>
+                </div>
+                <div class="form-group">
+                    <label>5. أكواد الدفع / الحسابات:</label>
+                    <textarea id="editDepCodes" rows="2" placeholder="أكواد الدفع أو أرقام الحسابات..."></textarea>
+                </div>
+                <div style="font-size:0.7rem; color:#a1a1aa; line-height:1.6;">تغيير سعر الصرف بيأثر على طلبات الإيداع الجديدة فقط، الطلبات المسجّلة سابقاً بتضل بسعرها.</div>
+                <button class="save-btn" id="editDepSaveBtn" onclick="saveEditedDepositMethod()">حفظ التعديلات</button>
+                <button class="btn-secondary" onclick="closeModal('editDepositMethodModal')">إلغاء</button>
             </div>
         </div>
 
@@ -11578,6 +11691,32 @@ ADMIN_HTML_CONTENT = """
                             <span id="depositCardSizeValue" style="color:#4ade80; font-weight:700;">100%</span>
                         </label>
                         <input type="range" id="depositCardSizeRange" min="50" max="150" value="100" step="5" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
+                    </div>
+
+                    <div style="border:1px dashed #3f3f46; border-radius:10px; padding:10px; display:flex; flex-direction:column; gap:12px;">
+                        <div style="font-size:0.8rem; color:#f59e0b; font-weight:800;">نافذة معلومات طريقة الإيداع (تظهر للعميل عند الضغط على الطريقة)</div>
+                        <div>
+                            <label style="font-size:0.8rem; color:#a1a1aa; display:flex; justify-content:space-between;">
+                                <span>عرض المربع</span>
+                                <span id="depositModalWidthValue" style="color:#4ade80; font-weight:700;">100%</span>
+                            </label>
+                            <input type="range" id="depositModalWidthRange" min="60" max="140" value="100" step="5" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.8rem; color:#a1a1aa; display:flex; justify-content:space-between;">
+                                <span>أقصى ارتفاع للمربع (من الشاشة)</span>
+                                <span id="depositModalHeightValue" style="color:#4ade80; font-weight:700;">92%</span>
+                            </label>
+                            <input type="range" id="depositModalHeightRange" min="50" max="98" value="92" step="2" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
+                        </div>
+                        <div>
+                            <label style="font-size:0.8rem; color:#a1a1aa; display:flex; justify-content:space-between;">
+                                <span>حجم المحتوى جوّا المربع (خط وصورة وحقول)</span>
+                                <span id="depositModalScaleValue" style="color:#4ade80; font-weight:700;">100%</span>
+                            </label>
+                            <input type="range" id="depositModalScaleRange" min="70" max="130" value="100" step="5" oninput="previewAppearance()" style="width:100%; margin-top:8px; accent-color:#a855f7;">
+                        </div>
+                        <button type="button" class="btn-secondary" onclick="resetDepositModalSizes()">رجوع للحجم الافتراضي</button>
                     </div>
 
                     <div>
@@ -12771,8 +12910,13 @@ ADMIN_HTML_CONTENT = """
 
         let imsOpenKeys = {};
         let imsCtx = null;
-        let imsApply = { main: false, sub: false };
-        let imsImg = { main: '', sub: '' };
+        let imsApply = { main: false, sub: false, grp: false };
+        let imsImg = { main: '', sub: '', grp: '', item: '' };
+        let imsOpenSubs = {};
+        let imsOpenGrps = {};
+        let imsItemsCache = {};
+        const IMS_PREV_IDS = { main: 'imsMainPrev', sub: 'imsSubPrev', grp: 'imsGrpPrev', item: 'imsItemPrev' };
+        const IMS_APPLY_IDS = { main: 'imsMainApplyBtn', sub: 'imsSubApplyBtn', grp: 'imsGrpApplyBtn' };
 
         function imsEsc(v) {
             return String(v === undefined || v === null ? '' : v).replace(/[&<>"']/g, function (c) {
@@ -12797,13 +12941,13 @@ ADMIN_HTML_CONTENT = """
         function imsCloseModal(id) { document.getElementById(id).classList.remove('active'); }
 
         function imsSetPrev(kind, src) {
-            const el = document.getElementById(kind === 'main' ? 'imsMainPrev' : 'imsSubPrev');
+            const el = document.getElementById(IMS_PREV_IDS[kind]);
             el.innerHTML = src ? '<img alt="" src="' + imsEsc(src) + '">' : '<svg class="ic"><use href="#i-image"/></svg>';
         }
 
         function imsSetToggle(kind, on) {
             imsApply[kind] = !!on;
-            const btn = document.getElementById(kind === 'main' ? 'imsMainApplyBtn' : 'imsSubApplyBtn');
+            const btn = document.getElementById(IMS_APPLY_IDS[kind]);
             btn.classList.toggle('on', !!on);
         }
         function imsToggleApply(kind) { imsSetToggle(kind, !imsApply[kind]); }
@@ -12946,6 +13090,19 @@ ADMIN_HTML_CONTENT = """
             imsRenderSubs(i);
         }
 
+        function imsFmtNum(v) {
+            const n = Number(v);
+            if (!isFinite(n)) return '0';
+            let t = n.toFixed(10);
+            if (t.indexOf('.') >= 0) {
+                while (t.charAt(t.length - 1) === '0') t = t.slice(0, -1);
+                if (t.charAt(t.length - 1) === '.') t = t.slice(0, -1);
+            }
+            return t;
+        }
+
+        function imsSubKey(s, p) { return s.import_key + '||' + p.name; }
+
         function imsRenderSubs(i) {
             const s = imsSections[i];
             const kids = document.getElementById('imsKids' + i);
@@ -12955,20 +13112,287 @@ ADMIN_HTML_CONTENT = """
                 return;
             }
             kids.innerHTML = items.map(function (p, j) {
-                return '<div class="ims-row ims-row-sub">' +
-                    '<div class="ims-row-right">' +
-                        imsThumb(p.image, 'box') +
-                        '<div class="ims-names">' +
-                            '<span class="ims-name">' + imsEsc(p.name) + '</span>' +
-                            '<span class="ims-meta">' + p.groups_count + ' منتج • ' + p.items_count + ' فئة</span>' +
+                const id = i + '_' + j;
+                return '<div class="ims-node">' +
+                    '<div class="ims-row ims-row-sub" onclick="imsToggleSub(' + i + ',' + j + ')">' +
+                        '<div class="ims-row-right">' +
+                            '<span class="ims-chevron" id="imsSubChev' + id + '">◂</span>' +
+                            imsThumb(p.image, 'box') +
+                            '<div class="ims-names">' +
+                                '<span class="ims-name">' + imsEsc(p.name) + '</span>' +
+                                '<span class="ims-meta">' + p.groups_count + ' منتج • ' + p.items_count + ' فئة</span>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="ims-row-left" onclick="event.stopPropagation()">' +
+                            '<input type="number" min="1" class="ims-ord" title="ترتيب القسم الفرعي (1 = أول قسم)" value="' + imsEsc(p.order) + '" onclick="event.stopPropagation()" onkeydown="if(event.keyCode===13){this.blur();}" onchange="imsSetOrder(1,' + i + ',' + j + ',this.value)">' +
+                            '<button class="ims-pen" title="تعديل" onclick="event.stopPropagation(); imsOpenSubEdit(' + i + ',' + j + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="ims-row-left">' +
-                        '<input type="number" min="1" class="ims-ord" title="ترتيب القسم الفرعي (1 = أول قسم)" value="' + imsEsc(p.order) + '" onkeydown="if(event.keyCode===13){this.blur();}" onchange="imsSetOrder(1,' + i + ',' + j + ',this.value)">' +
-                        '<button class="ims-pen" title="تعديل" onclick="imsOpenSubEdit(' + i + ',' + j + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
-                    '</div>' +
+                    '<div class="ims-children" id="imsSubKids' + id + '"></div>' +
                 '</div>';
             }).join('');
+            items.forEach(function (p, j) {
+                if (imsOpenSubs[imsSubKey(s, p)]) {
+                    const kk = document.getElementById('imsSubKids' + i + '_' + j);
+                    const cv = document.getElementById('imsSubChev' + i + '_' + j);
+                    if (kk) kk.classList.add('open');
+                    if (cv) cv.classList.add('open');
+                    imsLoadItems(i, j, false);
+                }
+            });
+        }
+
+        async function imsToggleSub(i, j) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            if (!p) return;
+            const kids = document.getElementById('imsSubKids' + i + '_' + j);
+            const chev = document.getElementById('imsSubChev' + i + '_' + j);
+            const k = imsSubKey(s, p);
+            if (kids.classList.contains('open')) {
+                kids.classList.remove('open');
+                chev.classList.remove('open');
+                delete imsOpenSubs[k];
+                return;
+            }
+            imsOpenSubs[k] = true;
+            kids.classList.add('open');
+            chev.classList.add('open');
+            await imsLoadItems(i, j, false);
+        }
+
+        async function imsLoadItems(i, j, force) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const kids = document.getElementById('imsSubKids' + i + '_' + j);
+            if (!p || !kids) return;
+            const k = imsSubKey(s, p);
+            if (!force && imsItemsCache[k]) { imsRenderItems(i, j); return; }
+            kids.innerHTML = '<div class="ims-loading">جاري التحميل...</div>';
+            try {
+                const res = await fetch('/api/imported_items?key=' + encodeURIComponent(s.import_key) + '&product=' + encodeURIComponent(p.name));
+                imsItemsCache[k] = await res.json();
+            } catch (e) {
+                kids.innerHTML = '<div class="ims-empty">تعذر تحميل المنتجات والفئات</div>';
+                return;
+            }
+            imsRenderItems(i, j);
+        }
+
+        function imsItemRowHtml(i, j, it) {
+            const tag = it.is_api ? '<span class="ims-tag api">API</span>' : '<span class="ims-tag">يدوي</span>';
+            const mg = it.is_api ? ' • ربح ' + imsFmtNum(it.profit_margin) + '%' : '';
+            const unit = it.is_counter ? ' (للحبة)' : '';
+            return '<div class="ims-row ims-row-sub ims-row-item">' +
+                '<div class="ims-row-right">' +
+                    imsThumb(it.image, 'box') +
+                    '<div class="ims-names">' +
+                        '<span class="ims-name">' + imsEsc(it.name) + '</span>' +
+                        '<span class="ims-meta">' + imsEsc(imsFmtNum(it.price)) + ' $' + unit + mg + ' ' + tag + '</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="ims-row-left">' +
+                    '<button class="ims-pen" title="تعديل الفئة" onclick="imsOpenItemEdit(' + i + ',' + j + ',' + it.idx + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
+                '</div>' +
+            '</div>';
+        }
+
+        function imsRenderItems(i, j) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const kids = document.getElementById('imsSubKids' + i + '_' + j);
+            if (!p || !kids) return;
+            const k = imsSubKey(s, p);
+            const d = imsItemsCache[k] || { groups: [], items: [] };
+            if (!d.groups.length && !d.items.length) {
+                kids.innerHTML = '<div class="ims-empty">ما في منتجات أو فئات داخل هالقسم الفرعي</div>';
+                return;
+            }
+            let html = '';
+            d.groups.forEach(function (g, gi) {
+                const gid = i + '_' + j + '_' + gi;
+                const isOpen = !!imsOpenGrps[k + '||' + g.id];
+                html += '<div class="ims-node">' +
+                    '<div class="ims-row ims-row-sub" onclick="imsToggleGrp(' + i + ',' + j + ',' + gi + ')">' +
+                        '<div class="ims-row-right">' +
+                            '<span class="ims-chevron' + (isOpen ? ' open' : '') + '" id="imsGrpChev' + gid + '">◂</span>' +
+                            imsThumb(g.image, 'box') +
+                            '<div class="ims-names">' +
+                                '<span class="ims-name">' + imsEsc(g.name) + '</span>' +
+                                '<span class="ims-meta">' + g.items.length + ' فئة</span>' +
+                            '</div>' +
+                        '</div>' +
+                        '<div class="ims-row-left" onclick="event.stopPropagation()">' +
+                            '<button class="ims-pen" title="تعديل المنتج" onclick="event.stopPropagation(); imsOpenGrpEdit(' + i + ',' + j + ',' + gi + ')"><svg class="ic"><use href="#i-pencil"/></svg></button>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="ims-children' + (isOpen ? ' open' : '') + '" id="imsGrpKids' + gid + '">' +
+                        (g.items.length ? g.items.map(function (it) { return imsItemRowHtml(i, j, it); }).join('') : '<div class="ims-empty">ما في فئات داخل هالمنتج</div>') +
+                    '</div>' +
+                '</div>';
+            });
+            if (d.items.length) {
+                if (d.groups.length) html += '<div class="ims-meta" style="padding:2px 6px;">فئات مباشرة تحت القسم الفرعي (بدون منتج)</div>';
+                html += d.items.map(function (it) { return imsItemRowHtml(i, j, it); }).join('');
+            }
+            kids.innerHTML = html;
+        }
+
+        function imsToggleGrp(i, j, gi) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const d = p && imsItemsCache[imsSubKey(s, p)];
+            const g = d && d.groups[gi];
+            if (!g) return;
+            const kids = document.getElementById('imsGrpKids' + i + '_' + j + '_' + gi);
+            const chev = document.getElementById('imsGrpChev' + i + '_' + j + '_' + gi);
+            const k = imsSubKey(s, p) + '||' + g.id;
+            const open = !kids.classList.contains('open');
+            kids.classList.toggle('open', open);
+            chev.classList.toggle('open', open);
+            if (open) imsOpenGrps[k] = true; else delete imsOpenGrps[k];
+        }
+
+        function imsOpenGrpEdit(i, j, gi) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const d = p && imsItemsCache[imsSubKey(s, p)];
+            const g = d && d.groups[gi];
+            if (!g) return;
+            imsCtx = { type: 'grp', i: i, j: j, gid: g.id };
+            document.getElementById('imsGrpName').value = g.name;
+            document.getElementById('imsGrpFile').value = '';
+            imsImg.grp = '';
+            imsSetPrev('grp', g.image);
+            imsSetToggle('grp', false);
+            imsOpenModal('imsGrpModal');
+        }
+
+        async function imsSaveGrp() {
+            if (!imsCtx || imsCtx.type !== 'grp') return;
+            const s = imsSections[imsCtx.i];
+            const p = (imsSubsCache[s.import_key] || [])[imsCtx.j];
+            const name = document.getElementById('imsGrpName').value.trim();
+            if (!name) { alert('اكتب اسم المنتج!'); return; }
+            const btn = document.getElementById('imsGrpSave');
+            btn.disabled = true; btn.innerText = 'جاري الحفظ...';
+            try {
+                const res = await fetch('/api/edit_imported_group', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        import_key: s.import_key,
+                        product: p.name,
+                        group_id: imsCtx.gid,
+                        new_name: name,
+                        image: imsImg.grp,
+                        apply_image: imsApply.grp
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    imsCloseModal('imsGrpModal');
+                    imsToast(data.message || 'تم الحفظ');
+                    await imsLoadItems(imsCtx.i, imsCtx.j, true);
+                } else {
+                    imsToast(data.message || 'صار خطأ أثناء الحفظ', true);
+                }
+            } catch (e) {
+                imsToast('تعذر الاتصال بالسيرفر', true);
+            }
+            btn.disabled = false; btn.innerText = 'حفظ التعديلات';
+        }
+
+        function imsFindItem(i, j, idx) {
+            const s = imsSections[i];
+            const p = s && (imsSubsCache[s.import_key] || [])[j];
+            const d = p && imsItemsCache[imsSubKey(s, p)];
+            if (!d) return null;
+            let found = d.items.find(function (x) { return x.idx === idx; });
+            if (found) return found;
+            for (let n = 0; n < d.groups.length; n++) {
+                found = d.groups[n].items.find(function (x) { return x.idx === idx; });
+                if (found) return found;
+            }
+            return null;
+        }
+
+        function imsOpenItemEdit(i, j, idx) {
+            const it = imsFindItem(i, j, idx);
+            if (!it) return;
+            imsCtx = { type: 'item', i: i, j: j, idx: idx, item: it };
+            document.getElementById('imsItemName').value = it.name;
+            document.getElementById('imsItemFile').value = '';
+            imsImg.item = '';
+            imsSetPrev('item', it.image);
+            document.getElementById('imsItemDesc').value = it.description || '';
+            document.getElementById('imsItemPrice').value = String(Number(it.price));
+            document.getElementById('imsItemMargin').value = String(Number(it.profit_margin));
+            document.getElementById('imsItemPriceLbl').innerText = it.is_counter ? '4. سعر الحبة الواحدة ($)' : '4. السعر ($)';
+            document.getElementById('imsItemMarginWrap').style.display = it.is_api ? '' : 'none';
+            document.getElementById('imsItemNote').innerText = it.is_api
+                ? 'هاي الفئة مربوطة بالـ API: سعرها الأساسي ' + imsFmtNum(it.base_price) + ' $ والموقع بيحسب سعرها = الأساسي + نسبة الربح. إذا غيّرت السعر بتنحسب نسبة الربح تلقائياً (وبتضل ثابتة مع مزامنة الأسعار).'
+                : 'فئة يدوية: السعر يلي بتكتبه هو السعر النهائي.';
+            imsOpenModal('imsItemModal');
+        }
+
+        // ربط السعر بنسبة الربح للفئات المربوطة بالـ API
+        function imsItemLink(src) {
+            if (!imsCtx || imsCtx.type !== 'item' || !imsCtx.item.is_api) return;
+            const base = Number(imsCtx.item.base_price);
+            if (!(base > 0)) return;
+            const pe = document.getElementById('imsItemPrice');
+            const me = document.getElementById('imsItemMargin');
+            if (src === 'margin') {
+                const m = parseFloat(me.value);
+                if (!isNaN(m)) pe.value = String(base * (1 + m / 100));
+            } else {
+                const pr = parseFloat(pe.value);
+                if (!isNaN(pr)) me.value = String((pr / base - 1) * 100);
+            }
+        }
+
+        async function imsSaveItem() {
+            if (!imsCtx || imsCtx.type !== 'item') return;
+            const s = imsSections[imsCtx.i];
+            const p = (imsSubsCache[s.import_key] || [])[imsCtx.j];
+            const it = imsCtx.item;
+            const name = document.getElementById('imsItemName').value.trim();
+            const priceStr = document.getElementById('imsItemPrice').value.trim();
+            const marginStr = document.getElementById('imsItemMargin').value.trim();
+            if (!name) { alert('اكتب اسم الفئة!'); return; }
+            if (priceStr !== '' && (isNaN(parseFloat(priceStr)) || parseFloat(priceStr) < 0)) { alert('السعر غير صحيح!'); return; }
+            if (it.is_api && marginStr !== '' && (isNaN(parseFloat(marginStr)) || parseFloat(marginStr) < 0)) { alert('نسبة الربح غير صحيحة!'); return; }
+            const btn = document.getElementById('imsItemSave');
+            btn.disabled = true; btn.innerText = 'جاري الحفظ...';
+            try {
+                const res = await fetch('/api/edit_imported_item', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        import_key: s.import_key,
+                        product: p.name,
+                        idx: it.idx,
+                        old_name: it.name,
+                        new_name: name,
+                        description: document.getElementById('imsItemDesc').value,
+                        price: priceStr,
+                        profit_margin: it.is_api ? marginStr : '',
+                        image: imsImg.item
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    imsCloseModal('imsItemModal');
+                    imsToast(data.message || 'تم الحفظ');
+                    await imsLoadItems(imsCtx.i, imsCtx.j, true);
+                } else {
+                    imsToast(data.message || 'صار خطأ أثناء الحفظ', true);
+                }
+            } catch (e) {
+                imsToast('تعذر الاتصال بالسيرفر', true);
+            }
+            btn.disabled = false; btn.innerText = 'حفظ التعديلات';
         }
 
         async function imsSetOrder(kindNum, i, j, val) {
@@ -13050,6 +13474,7 @@ ADMIN_HTML_CONTENT = """
                     imsCloseModal('imsMainModal');
                     imsToast(data.message || 'تم الحفظ');
                     imsSubsCache = {};
+                    imsItemsCache = {};
                     await imsLoadSections();
                 } else {
                     imsToast(data.message || 'صار خطأ أثناء الحفظ', true);
@@ -13084,6 +13509,7 @@ ADMIN_HTML_CONTENT = """
                 if (data.status === 'success') {
                     imsCloseModal('imsSubModal');
                     imsToast(data.message || 'تم الحفظ');
+                    imsItemsCache = {};
                     await imsLoadSubs(imsCtx.i, true);
                 } else {
                     imsToast(data.message || 'صار خطأ أثناء الحفظ', true);
@@ -13848,6 +14274,7 @@ ADMIN_HTML_CONTENT = """
 
         function openAddCurrencyModal() {
             toggleSidebar();
+            cancelEditCurrency();
             document.getElementById('currencyNameInput').value = '';
             document.getElementById('currencySymbolInput').value = '';
             document.getElementById('currencyRateInput').value = '';
@@ -13855,10 +14282,36 @@ ADMIN_HTML_CONTENT = """
             openModal('addCurrencyModalOverlay');
         }
 
+        let currencyEditIndex = -1;
+        let currenciesAdminCache = [];
+
+        function startEditCurrency(idx) {
+            const c = currenciesAdminCache[idx];
+            if (!c) return;
+            currencyEditIndex = idx;
+            document.getElementById('currencyNameInput').value = c.name || '';
+            document.getElementById('currencySymbolInput').value = c.symbol || '';
+            document.getElementById('currencyRateInput').value = c.exchange_rate != null ? String(c.exchange_rate) : '';
+            document.getElementById('currencyEditName').innerText = c.name || '';
+            document.getElementById('currencyEditBanner').style.display = 'flex';
+            document.getElementById('currencySaveBtn').innerText = 'حفظ التعديل';
+            document.getElementById('currencyNameInput').focus();
+        }
+
+        function cancelEditCurrency() {
+            currencyEditIndex = -1;
+            document.getElementById('currencyNameInput').value = '';
+            document.getElementById('currencySymbolInput').value = '';
+            document.getElementById('currencyRateInput').value = '';
+            document.getElementById('currencyEditBanner').style.display = 'none';
+            document.getElementById('currencySaveBtn').innerText = 'حفظ';
+        }
+
         async function loadCurrenciesList() {
             try {
                 const res = await fetch('/api/get_currencies');
                 const currencies = await res.json();
+                currenciesAdminCache = currencies;
                 const container = document.getElementById('currenciesListContainer');
                 container.innerHTML = '';
                 if (currencies.length === 0) {
@@ -13873,7 +14326,10 @@ ADMIN_HTML_CONTENT = """
                             <div style="font-size:0.85rem; font-weight:700; color:#fff;">${c.name} (${c.symbol})</div>
                             <div style="font-size:0.72rem; color:#a1a1aa;">سعر الصرف: ${c.exchange_rate}</div>
                         </div>
-                        <button onclick="deleteCurrency(${idx})" style="background:#dc2626; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:0.72rem; font-weight:700; cursor:pointer;">حذف</button>
+                        <div style="display:flex; gap:6px; flex-shrink:0;">
+                            <button onclick="startEditCurrency(${idx})" style="background:#2563eb; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:0.72rem; font-weight:700; cursor:pointer; width:auto;">تعديل</button>
+                            <button onclick="deleteCurrency(${idx})" style="background:#dc2626; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:0.72rem; font-weight:700; cursor:pointer; width:auto;">حذف</button>
+                        </div>
                     `;
                     container.appendChild(item);
                 });
@@ -13891,20 +14347,24 @@ ADMIN_HTML_CONTENT = """
             }
 
             try {
-                const res = await fetch('/api/add_currency', {
+                const editing = currencyEditIndex >= 0 && currenciesAdminCache[currencyEditIndex];
+                const res = await fetch(editing ? '/api/update_currency' : '/api/add_currency', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, symbol, exchange_rate: rate })
+                    body: JSON.stringify(editing
+                        ? { index: currencyEditIndex, old_name: currenciesAdminCache[currencyEditIndex].name, name, symbol, exchange_rate: rate }
+                        : { name, symbol, exchange_rate: rate })
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
                     alert('تم الحفظ بنجاح');
+                    cancelEditCurrency();
                     document.getElementById('currencyNameInput').value = '';
                     document.getElementById('currencySymbolInput').value = '';
                     document.getElementById('currencyRateInput').value = '';
                     loadCurrenciesList();
                 } else {
-                    alert('حدث خطأ أثناء الحفظ!');
+                    alert(data.message || 'حدث خطأ أثناء الحفظ!');
                 }
             } catch (e) {
                 alert('فشل الاتصال بالخادم!');
@@ -13945,6 +14405,9 @@ ADMIN_HTML_CONTENT = """
                 if (a.top_header_height) document.getElementById('topHeaderSizeRange').value = a.top_header_height;
                 if (a.bottom_nav_height) document.getElementById('bottomNavSizeRange').value = a.bottom_nav_height;
                 if (a.deposit_card_size) document.getElementById('depositCardSizeRange').value = a.deposit_card_size;
+                document.getElementById('depositModalWidthRange').value = a.deposit_modal_width || 100;
+                document.getElementById('depositModalHeightRange').value = a.deposit_modal_height || 92;
+                document.getElementById('depositModalScaleRange').value = a.deposit_modal_scale || 100;
                 if (a.category_card_size) document.getElementById('categoryCardSizeRange').value = a.category_card_size;
                 if (a.order_card_size) document.getElementById('orderCardSizeRange').value = a.order_card_size;
                 if (a.price_font_size) document.getElementById('priceFontSizeRange').value = a.price_font_size;
@@ -14043,11 +14506,21 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('bottomNavSizeValue').innerText = bh + 'px';
             document.getElementById('categoryCardSizeValue').innerText = ccs + '%';
             document.getElementById('depositCardSizeValue').innerText = dcs + '%';
+            document.getElementById('depositModalWidthValue').innerText = document.getElementById('depositModalWidthRange').value + '%';
+            document.getElementById('depositModalHeightValue').innerText = document.getElementById('depositModalHeightRange').value + '%';
+            document.getElementById('depositModalScaleValue').innerText = document.getElementById('depositModalScaleRange').value + '%';
             document.getElementById('orderCardSizeValue').innerText = ocs + '%';
             document.getElementById('priceFontSizeValue').innerText = pfs + 'px';
             const pfp = document.getElementById('priceFontPreview');
             pfp.style.fontSize = pfs + 'px';
             pfp.style.color = pfc;
+        }
+
+        function resetDepositModalSizes() {
+            document.getElementById('depositModalWidthRange').value = 100;
+            document.getElementById('depositModalHeightRange').value = 92;
+            document.getElementById('depositModalScaleRange').value = 100;
+            previewAppearance();
         }
 
         async function saveAppearanceSettings() {
@@ -14110,6 +14583,9 @@ ADMIN_HTML_CONTENT = """
                 top_header_height: parseInt(document.getElementById('topHeaderSizeRange').value),
                 bottom_nav_height: parseInt(document.getElementById('bottomNavSizeRange').value),
                 deposit_card_size: parseInt(document.getElementById('depositCardSizeRange').value),
+                deposit_modal_width: parseInt(document.getElementById('depositModalWidthRange').value),
+                deposit_modal_height: parseInt(document.getElementById('depositModalHeightRange').value),
+                deposit_modal_scale: parseInt(document.getElementById('depositModalScaleRange').value),
                 category_card_size: parseInt(document.getElementById('categoryCardSizeRange').value),
                 order_card_size: parseInt(document.getElementById('orderCardSizeRange').value),
                 price_font_size: parseInt(document.getElementById('priceFontSizeRange').value),
@@ -16892,30 +17368,97 @@ ADMIN_HTML_CONTENT = """
             fetchStatsAndRender();
         }
 
+        let depMethodsCache = [];
+        let editDepIndex = -1;
+
+        function renderDepositMethodsList(methods) {
+            depMethodsCache = methods;
+            const list = document.getElementById('depositMethodsList');
+            list.innerHTML = '';
+            if (methods.length === 0) {
+                list.innerHTML = `<div style="text-align:center; color:#a1a1aa; font-size:0.8rem; padding:10px;">لا توجد طرق إيداع مضافة حالياً</div>`;
+                return;
+            }
+            methods.forEach((m, idx) => {
+                let imgHTML = m.image ? `<img src="${imsEsc(m.image)}" style="width:100%; max-height:80px; object-fit:cover; border-radius:6px; margin-bottom:4px;" />` : '';
+                list.innerHTML += `
+                    <div style="background-color:#121212; border:1px solid #27272a; border-radius:8px; padding:10px;">
+                        ${imgHTML}
+                        <div style="font-weight:700; font-size:0.9rem;">${imsEsc(m.name)}</div>
+                        <div style="font-size:0.75rem; color:#a1a1aa;">${imsEsc(m.description || 'لا يوجد وصف')}</div>
+                        <div style="font-size:0.75rem; color:#4ade80;">الصرف: ${formatBalance(m.exchange_rate || 0)}</div>
+                        <button onclick="openEditDepositMethodModal(${idx})" style="margin-top:8px; width:100%; background:#2563eb; color:#fff; border:none; border-radius:6px; padding:7px; font-size:0.78rem; font-weight:700; cursor:pointer;">تعديل</button>
+                    </div>
+                `;
+            });
+        }
+
         function openViewDepositMethodsModal() {
             toggleSidebar();
             fetch('/api/get_deposit_methods?manual=1')
                 .then(r => r.json())
                 .then(methods => {
-                    const list = document.getElementById('depositMethodsList');
-                    list.innerHTML = '';
-                    if (methods.length === 0) {
-                        list.innerHTML = `<div style="text-align:center; color:#a1a1aa; font-size:0.8rem; padding:10px;">لا توجد طرق إيداع مضافة حالياً</div>`;
-                    } else {
-                        methods.forEach(m => {
-                            let imgHTML = m.image ? `<img src="${m.image}" style="width:100%; max-height:80px; object-fit:cover; border-radius:6px; margin-bottom:4px;" />` : '';
-                            list.innerHTML += `
-                                <div style="background-color:#121212; border:1px solid #27272a; border-radius:8px; padding:10px;">
-                                    ${imgHTML}
-                                    <div style="font-weight:700; font-size:0.9rem;">${m.name}</div>
-                                    <div style="font-size:0.75rem; color:#a1a1aa;">${m.description || 'لا يوجد وصف'}</div>
-                                    <div style="font-size:0.75rem; color:#4ade80;">الصرف: ${formatBalance(m.exchange_rate || 0)}</div>
-                                </div>
-                            `;
-                        });
-                    }
+                    renderDepositMethodsList(methods);
                     openModal('viewDepositMethodsModal');
                 });
+        }
+
+        function openEditDepositMethodModal(idx) {
+            const m = depMethodsCache[idx];
+            if (!m) return;
+            editDepIndex = idx;
+            document.getElementById('editDepName').value = m.name || '';
+            document.getElementById('editDepDescription').value = m.description || '';
+            document.getElementById('editDepRate').value = m.exchange_rate != null ? String(m.exchange_rate) : '';
+            document.getElementById('editDepCodes').value = m.payment_codes || '';
+            document.getElementById('editDepImageInput').value = '';
+            document.getElementById('editDepRemoveImg').checked = false;
+            const pv = document.getElementById('editDepImgPrev');
+            if (m.image) { pv.src = m.image; pv.style.display = 'block'; } else { pv.removeAttribute('src'); pv.style.display = 'none'; }
+            openModal('editDepositMethodModal');
+        }
+
+        async function saveEditedDepositMethod() {
+            const m = depMethodsCache[editDepIndex];
+            if (!m) return;
+            const name = document.getElementById('editDepName').value.trim();
+            const rate = parseFloat(document.getElementById('editDepRate').value);
+            if (!name) { alert('يرجى إدخال اسم الطريقة!'); return; }
+            if (isNaN(rate) || rate <= 0) { alert('يرجى إدخال سعر صرف صحيح (أكبر من 0)!'); return; }
+            const btn = document.getElementById('editDepSaveBtn');
+            btn.disabled = true; btn.innerText = 'جاري الحفظ...';
+            try {
+                let imageData = '';
+                const f = document.getElementById('editDepImageInput');
+                if (f.files && f.files[0]) imageData = await imsReadImage(f.files[0]);
+                const res = await fetch('/api/update_deposit_method', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        index: editDepIndex,
+                        old_name: m.name,
+                        name: name,
+                        description: document.getElementById('editDepDescription').value.trim(),
+                        exchange_rate: rate,
+                        payment_codes: document.getElementById('editDepCodes').value.trim(),
+                        image: imageData,
+                        remove_image: document.getElementById('editDepRemoveImg').checked
+                    })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert('تم حفظ تعديلات الطريقة بنجاح!');
+                    closeModal('editDepositMethodModal');
+                    const methods = await fetch('/api/get_deposit_methods?manual=1').then(r => r.json());
+                    renderDepositMethodsList(methods);
+                    fetchStatsAndRender();
+                } else {
+                    alert('حدث خطأ: ' + (data.message || 'يرجى المحاولة مرة أخرى'));
+                }
+            } catch (e) {
+                alert('حدث خطأ في الاتصال بالخادم');
+            }
+            btn.disabled = false; btn.innerText = 'حفظ التعديلات';
         }
 
         let inspectedClientData = null;
@@ -20543,10 +21086,277 @@ def ims_edit_subsection(data):
         return {"status": "success", "message": msg}
 
 
+
+# --------------------------------------------------
+# تعديل كامل لمحتوى القسم الفرعي المسحوب: منتج (مجموعة) + فئة
+# --------------------------------------------------
+def _ims_find_product(key, product):
+    info = API_IMPORTS_DATA.get(key)
+    if not info:
+        return None, "القسم المسحوب غير موجود!"
+    cat = info.get('category_name') or ''
+    prod = next((p for p in _ims_products_of(key, cat) if p.get('name') == product), None)
+    if prod is None:
+        return None, "القسم الفرعي غير موجود!"
+    return prod, None
+
+
+def _ims_item_view(s, idx):
+    is_ctr = bool(s.get('is_counter'))
+    price = counter_unit_price(s) if is_ctr else _num(s.get('price', 0))
+    return {
+        "idx": idx,
+        "name": s.get('name') or '',
+        "image": s.get('image') or '',
+        "description": s.get('description') or '',
+        "price": price,
+        "base_price": _num(s.get('base_price', 0)),
+        "profit_margin": _num(s.get('profit_margin', 0)),
+        "is_api": bool(s.get('api_product_id') and s.get('provider_name')),
+        "is_counter": is_ctr,
+    }
+
+
+def ims_get_items(key, product):
+    with DATA_LOCK:
+        _prod, err = _ims_find_product(key, product)
+        if err:
+            return {"groups": [], "items": []}
+        gmap = {}
+        for g in SUBCATEGORY_GROUPS_DATA.get(product, []):
+            gmap[g.get('id')] = {"id": g.get('id'), "name": g.get('name') or '',
+                                 "image": g.get('image') or '', "items": []}
+        loose = []
+        for idx, s in enumerate(SUBCATEGORIES_DATA):
+            if s.get('product') != product:
+                continue
+            v = _ims_item_view(s, idx)
+            gid = s.get('group_id')
+            if gid and gid in gmap:
+                gmap[gid]['items'].append(v)
+            else:
+                loose.append(v)
+        return {"groups": list(gmap.values()), "items": loose}
+
+
+def ims_edit_group(data):
+    key = data.get('import_key')
+    product = data.get('product')
+    gid = data.get('group_id')
+    new_name = (data.get('new_name') or '').strip()
+    image = data.get('image') or ''
+    apply_image = bool(data.get('apply_image'))
+    with DATA_LOCK:
+        _prod, err = _ims_find_product(key, product)
+        if err:
+            return {"status": "error", "message": err}
+        groups = SUBCATEGORY_GROUPS_DATA.get(product, [])
+        g = next((x for x in groups if x.get('id') == gid), None)
+        if g is None:
+            return {"status": "error", "message": "المنتج غير موجود، حدّث الصفحة وجرّب مرة ثانية!"}
+        if not new_name:
+            return {"status": "error", "message": "اكتب اسم المنتج!"}
+        if new_name != g.get('name') and any(x is not g and x.get('name') == new_name for x in groups):
+            return {"status": "error", "message": "في منتج ثاني بنفس هالاسم داخل هالقسم، اختار اسم مختلف!"}
+        notes = []
+        ch_g = ch_s = False
+        if new_name != g.get('name'):
+            g['name'] = new_name
+            ch_g = True
+            notes.append("تم تغيير الاسم")
+        if image:
+            g['image'] = image
+            ch_g = True
+            notes.append("تم تغيير الصورة")
+        if apply_image:
+            img = store_image_value(image or g.get('image') or '')
+            if img:
+                n = 0
+                for s in SUBCATEGORIES_DATA:
+                    if s.get('product') == product and s.get('group_id') == gid:
+                        s['image'] = img
+                        n += 1
+                if n:
+                    ch_s = True
+                notes.append(f"تم تطبيق الصورة على {n} فئة")
+            else:
+                notes.append("ما في صورة للتطبيق")
+        if ch_g:
+            save_json_file(SUBCATEGORY_GROUPS_FILE, SUBCATEGORY_GROUPS_DATA)
+        if ch_s:
+            save_json_file(SUBCATEGORIES_FILE, SUBCATEGORIES_DATA)
+        return {"status": "success", "message": " • ".join(notes) if notes else "ما في تغييرات"}
+
+
+def _ims_parse_nonneg(v, err_msg):
+    if v in (None, ''):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(err_msg)
+    if f != f or f < 0 or f == float('inf'):
+        raise ValueError(err_msg)
+    return f
+
+
+def ims_edit_item(data):
+    key = data.get('import_key')
+    product = data.get('product')
+    old_name = data.get('old_name')
+    new_name = (data.get('new_name') or '').strip()
+    desc_in = data.get('description')
+    image = data.get('image') or ''
+    try:
+        idx = int(data.get('idx'))
+    except (TypeError, ValueError):
+        return {"status": "error", "message": "الفئة غير معروفة!"}
+    try:
+        price = _ims_parse_nonneg(data.get('price'), "السعر غير صحيح!")
+        margin = _ims_parse_nonneg(data.get('profit_margin'), "نسبة الربح غير صحيحة!")
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+
+    def _diff(a, b):
+        return abs(a - b) > (1e-12 + 1e-9 * abs(b))
+
+    with DATA_LOCK:
+        _prod, err = _ims_find_product(key, product)
+        if err:
+            return {"status": "error", "message": err}
+        if idx < 0 or idx >= len(SUBCATEGORIES_DATA):
+            return {"status": "error", "message": "الفئة غير موجودة، حدّث الصفحة وجرّب مرة ثانية!"}
+        sub = SUBCATEGORIES_DATA[idx]
+        if sub.get('product') != product or sub.get('name') != old_name:
+            return {"status": "error", "message": "البيانات تغيّرت، حدّث الصفحة وجرّب مرة ثانية!"}
+        if not new_name:
+            return {"status": "error", "message": "اكتب اسم الفئة!"}
+        if new_name != old_name and any(x is not sub and x.get('product') == product and x.get('name') == new_name
+                                        for x in SUBCATEGORIES_DATA):
+            return {"status": "error", "message": "في فئة ثانية بنفس هالاسم داخل هالقسم الفرعي، اختار اسم مختلف!"}
+
+        is_ctr = bool(sub.get('is_counter'))
+        is_api = bool(sub.get('api_product_id') and sub.get('provider_name'))
+        cur_price = counter_unit_price(sub) if is_ctr else _num(sub.get('price', 0))
+        cur_margin = _num(sub.get('profit_margin', 0))
+
+        new_price = None
+        new_margin = None
+        if is_api:
+            base = _num(sub.get('base_price'), 0)
+            if margin is not None and _diff(margin, cur_margin):
+                if base <= 0:
+                    return {"status": "error", "message": "ما في سعر أساسي لهالفئة، ما فيني احسب نسبة الربح!"}
+                new_margin = margin
+                new_price = round(base * (1 + margin / 100.0), PRICE_DECIMALS)
+            elif price is not None and _diff(price, cur_price):
+                if base <= 0:
+                    return {"status": "error", "message": "ما في سعر أساسي لهالفئة، عدّل نسبة الربح بدل السعر!"}
+                if price <= 0:
+                    return {"status": "error", "message": "السعر لازم يكون أكبر من 0!"}
+                new_margin = (price / base - 1.0) * 100.0
+                new_price = round(price, PRICE_DECIMALS)
+        else:
+            if price is not None and _diff(price, cur_price):
+                if price <= 0:
+                    return {"status": "error", "message": "السعر لازم يكون أكبر من 0!"}
+                new_price = round(price, PRICE_DECIMALS)
+
+        notes = []
+        if new_name != old_name:
+            sub['name'] = new_name
+            notes.append("تم تغيير الاسم")
+        if image:
+            sub['image'] = image
+            notes.append("تم تغيير الصورة")
+        if isinstance(desc_in, str) and desc_in.strip() != str(sub.get('description') or '').strip():
+            sub['description'] = desc_in.strip()
+            sub['desc_api'] = False   # وصف يدوي: مزامنة الـ API ما بتبدّله
+            notes.append("تم تغيير الوصف")
+        if new_price is not None:
+            if new_margin is not None:
+                sub['profit_margin'] = new_margin
+            if is_ctr:
+                set_counter_unit_price(sub, new_price)
+            else:
+                sub['price'] = new_price
+            notes.append("تم تغيير السعر")
+        if notes:
+            save_json_file(SUBCATEGORIES_FILE, SUBCATEGORIES_DATA)
+        return {"status": "success", "message": " • ".join(notes) if notes else "ما في تغييرات"}
+
+
+# --------------------------------------------------
+# تعديل طريقة إيداع / عملة
+# --------------------------------------------------
+def update_deposit_method(data):
+    try:
+        idx = int(data.get('index'))
+    except (TypeError, ValueError):
+        return {"status": "error", "message": "الطريقة غير معروفة!"}
+    name = str(data.get('name') or '').strip()
+    try:
+        rate = round(float(data.get('exchange_rate', 0)), 10)
+    except (TypeError, ValueError):
+        rate = 0
+    if not name:
+        return {"status": "error", "message": "اكتب اسم الطريقة!"}
+    if not rate > 0 or rate == float('inf'):
+        return {"status": "error", "message": "سعر الصرف لازم يكون أكبر من 0!"}
+    with DATA_LOCK:
+        if idx < 0 or idx >= len(DEPOSIT_METHODS_DATA):
+            return {"status": "error", "message": "الطريقة غير موجودة، حدّث الصفحة وجرّب مرة ثانية!"}
+        m = DEPOSIT_METHODS_DATA[idx]
+        old_name = data.get('old_name')
+        if old_name is not None and m.get('name') != old_name:
+            return {"status": "error", "message": "قائمة الطرق تغيّرت، حدّث الصفحة وجرّب مرة ثانية!"}
+        m['name'] = name
+        m['description'] = str(data.get('description') or '')
+        m['exchange_rate'] = rate
+        m['payment_codes'] = str(data.get('payment_codes') or '')
+        image = data.get('image') or ''
+        if image:
+            m['image'] = image
+        elif data.get('remove_image'):
+            m['image'] = ''
+        save_json_file(DEPOSIT_METHODS_FILE, DEPOSIT_METHODS_DATA)
+    return {"status": "success"}
+
+
+def update_currency(data):
+    try:
+        idx = int(data.get('index'))
+    except (TypeError, ValueError):
+        return {"status": "error", "message": "العملة غير معروفة!"}
+    name = str(data.get('name') or '').strip()
+    symbol = str(data.get('symbol') or '').strip()
+    try:
+        rate = float(data.get('exchange_rate', 0))
+    except (TypeError, ValueError):
+        rate = 0
+    if not name or not symbol or not rate > 0 or rate == float('inf'):
+        return {"status": "error", "message": "بيانات غير صالحة"}
+    with DATA_LOCK:
+        if idx < 0 or idx >= len(CURRENCIES_DATA):
+            return {"status": "error", "message": "العملة غير موجودة، حدّث الصفحة وجرّب مرة ثانية!"}
+        cur = CURRENCIES_DATA[idx]
+        old_name = data.get('old_name')
+        if old_name is not None and cur.get('name') != old_name:
+            return {"status": "error", "message": "قائمة العملات تغيّرت، حدّث الصفحة وجرّب مرة ثانية!"}
+        if any(i != idx and c.get('name') == name for i, c in enumerate(CURRENCIES_DATA)):
+            return {"status": "error", "message": "في عملة ثانية بنفس هالاسم!"}
+        cur['name'] = name
+        cur['symbol'] = symbol
+        cur['exchange_rate'] = rate
+        save_json_file(CURRENCIES_FILE, CURRENCIES_DATA)
+    return {"status": "success"}
+
+
 MAX_POST_BYTES = 90 * 1024 * 1024   # أكبر طلب مسموح (فيديو 60MB يصير ~80MB بعد base64)
 IMAGE_FILE_PATHS = {"/api/update_category", "/api/add_category", "/api/add_product", "/api/add_subcategory",
                     "/api/add_subcategory_group", "/api/update_subcategory_group", "/api/add_deposit_method", "/api/auto_deposit_save",
-                    "/api/edit_imported_section", "/api/edit_imported_subsection", "/api/import_api_category_full"}
+                    "/api/edit_imported_section", "/api/edit_imported_subsection", "/api/import_api_category_full",
+                    "/api/edit_imported_group", "/api/edit_imported_item", "/api/update_deposit_method"}
 MAX_IMAGE_CHARS = 1500000           # أكبر صورة قسم (نص base64) ~1.1MB
 POST_LOCK = threading.RLock()   # يسلسل عمليات الكتابة (POST) حتى ما يصير تضارب بالأرصدة والبيانات
 # مسارات ما بتمرّ من POST_LOCK: إما قراءة فقط، أو بتحمي نفسها بـ DATA_LOCK (زي بوت التلغرام اللي كان أصلاً بينفّذ الشراء بدون القفل).
@@ -20660,6 +21470,7 @@ ADMIN_PATH_PERMS = {
     "/api/get_all_orders": "orders",
     "/api/imported_sections": ("products", "api"),
     "/api/imported_subsections": ("products", "api"),
+    "/api/imported_items": ("products", "api"),
     "/api/import_progress": ("api", "products"),
     "/api/get_providers": ("api", "products"),
     "/api/get_all_clients": ("clients", "balance"),
@@ -20700,6 +21511,10 @@ ADMIN_PATH_PERMS = {
     "/api/api_sync_now": "api",
     "/api/edit_imported_section": "products",
     "/api/edit_imported_subsection": "products",
+    "/api/edit_imported_group": "products",
+    "/api/edit_imported_item": "products",
+    "/api/update_deposit_method": "deposits",
+    "/api/update_currency": "deposits",
     "/api/ims_set_order": "products",
     "/api/set_client_discount": "clients",
     "/api/remove_client_discount": "clients",
@@ -20759,6 +21574,10 @@ ADMIN_ACTION_LABELS = {
     "/api/api_sync_now": "تشغيل مزامنة API يدوياً",
     "/api/edit_imported_section": "تعديل قسم مسحوب",
     "/api/edit_imported_subsection": "تعديل قسم فرعي مسحوب",
+    "/api/edit_imported_group": "تعديل منتج مسحوب",
+    "/api/edit_imported_item": "تعديل فئة مسحوبة",
+    "/api/update_deposit_method": "تعديل طريقة إيداع",
+    "/api/update_currency": "تعديل عملة",
     "/api/ims_set_order": "ترتيب الأقسام المسحوبة",
     "/api/set_client_discount": "إضافة خصم لعميل",
     "/api/remove_client_discount": "إزالة خصم عميل",
@@ -22849,6 +23668,15 @@ self.addEventListener('fetch', event => {
             self.end_headers()
             self.wfile.write(json.dumps({"items": ims_get_subsections(ims_key)}, ensure_ascii=False).encode("utf-8"))
 
+        elif self.path.startswith("/api/imported_items"):
+            _q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            _res = ims_get_items(_q.get('key', [''])[0], _q.get('product', [''])[0])
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(json.dumps(_res, ensure_ascii=False).encode("utf-8"))
+
         elif self.path.startswith("/api/import_progress"):
             query = urllib.parse.urlparse(self.path).query
             job_id = urllib.parse.parse_qs(query).get('job_id', [''])[0]
@@ -23386,6 +24214,9 @@ self.addEventListener('fetch', event => {
             APPEARANCE_DATA['top_header_height'] = int(data.get('top_header_height', 65))
             APPEARANCE_DATA['bottom_nav_height'] = int(data.get('bottom_nav_height', 62))
             APPEARANCE_DATA['deposit_card_size'] = int(data.get('deposit_card_size', 100))
+            APPEARANCE_DATA['deposit_modal_width'] = max(60, min(140, int(data.get('deposit_modal_width', 100))))
+            APPEARANCE_DATA['deposit_modal_height'] = max(50, min(98, int(data.get('deposit_modal_height', 92))))
+            APPEARANCE_DATA['deposit_modal_scale'] = max(70, min(130, int(data.get('deposit_modal_scale', 100))))
             APPEARANCE_DATA['category_card_size'] = int(data.get('category_card_size', 100))
             APPEARANCE_DATA['order_card_size'] = max(50, min(160, int(data.get('order_card_size', 100))))
             APPEARANCE_DATA['price_font_size'] = int(data.get('price_font_size', 13))
@@ -23463,6 +24294,9 @@ self.addEventListener('fetch', event => {
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+
+        elif self.path == "/api/update_currency":
+            self._reply_json(update_currency(data))
 
         elif self.path == "/api/delete_currency":
             index = data.get('index')
@@ -23886,10 +24720,15 @@ self.addEventListener('fetch', event => {
                 self.end_headers()
                 self.wfile.write(json.dumps({"status": "error", "message": str(e)}, ensure_ascii=False).encode("utf-8"))
 
-        elif self.path in ("/api/edit_imported_section", "/api/edit_imported_subsection"):
+        elif self.path in ("/api/edit_imported_section", "/api/edit_imported_subsection",
+                           "/api/edit_imported_group", "/api/edit_imported_item"):
             try:
                 if self.path == "/api/edit_imported_section":
                     result = ims_edit_section(data)
+                elif self.path == "/api/edit_imported_group":
+                    result = ims_edit_group(data)
+                elif self.path == "/api/edit_imported_item":
+                    result = ims_edit_item(data)
                 else:
                     result = ims_edit_subsection(data)
             except Exception as e:
@@ -24194,6 +25033,9 @@ self.addEventListener('fetch', event => {
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+
+        elif self.path == "/api/update_deposit_method":
+            self._reply_json(update_deposit_method(data))
 
         elif self.path == "/api/delete_deposit_method":
             index = data.get('index')
