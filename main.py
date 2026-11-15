@@ -1121,24 +1121,91 @@ order_polling_system = OrderPollingSystem(check_interval=60)
 
 
 # --------------------------------------------------
-# نظام مراقبة أسعار API كل 5 دقائق
+# مزامنة أسعار وتوفر API (قابلة للضبط من لوحة الأدمن)
+# --------------------------------------------------
+API_SYNC_FILE = "api_sync_settings.json"
+API_SYNC_DEFAULTS = {"enabled": True, "interval_min": 5, "sync_availability": True}
+API_SYNC_INTERVALS = (1, 5, 15, 30, 60)
+API_SYNC_SETTINGS = dict(API_SYNC_DEFAULTS)
+try:
+    _loaded_sync = load_json_file(API_SYNC_FILE, dict(API_SYNC_DEFAULTS))
+    for _k in API_SYNC_DEFAULTS:
+        if _k in _loaded_sync:
+            API_SYNC_SETTINGS[_k] = _loaded_sync[_k]
+    if API_SYNC_SETTINGS.get("interval_min") not in API_SYNC_INTERVALS:
+        API_SYNC_SETTINGS["interval_min"] = 5
+except Exception as _e:
+    logging.error(f"تعذر قراءة إعدادات المزامنة: {_e}")
+API_SYNC_STATUS = {
+    "running": False, "last_run": "", "last_duration": 0.0, "next_run": "",
+    "checked": 0, "price_changes": 0, "availability_changes": 0,
+    "errors": [], "providers": {}
+}
+
+
+def _as_bool_flag(v):
+    """يحوّل قيمة available من المزود لـ True/False، أو None لو غير معروفة."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        t = v.strip().lower()
+        if t in ('1', 'true', 'yes', 'y', 'available', 'متاح', 'متوفر'):
+            return True
+        if t in ('0', 'false', 'no', 'n', 'unavailable', 'غير متاح', 'غير متوفر'):
+            return False
+    return None
+
+
+# --------------------------------------------------
+# نظام مراقبة أسعار وتوفر API
 # --------------------------------------------------
 class ApiPriceMonitor:
     def __init__(self, check_interval=300):
         self.check_interval = check_interval
         self.running = True
+        self.wake = threading.Event()
+        self._run_lock = threading.Lock()
         self.monitor_thread = threading.Thread(target=self._monitor_prices, daemon=True)
         self.monitor_thread.start()
         logging.info("تم تشغيل نظام مراقبة أسعار API")
 
+    def _interval_seconds(self):
+        try:
+            return max(60, int(API_SYNC_SETTINGS.get("interval_min", 5)) * 60)
+        except Exception:
+            return self.check_interval
+
     def _monitor_prices(self):
         while self.running:
-            try:
-                self._check_all_api_linked_subcategories()
-            except Exception as e:
-                logging.error(f"خطأ في مراقبة أسعار API: {e}")
+            if API_SYNC_SETTINGS.get("enabled", True):
+                self.run_once()
+            interval = self._interval_seconds()
+            if API_SYNC_SETTINGS.get("enabled", True):
+                API_SYNC_STATUS["next_run"] = datetime.fromtimestamp(time.time() + interval).strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                API_SYNC_STATUS["next_run"] = ""
+            self.wake.wait(interval)
+            self.wake.clear()
 
-            time.sleep(self.check_interval)
+    def run_once(self):
+        """تشغيل دورة مزامنة واحدة. يرجع False لو في دورة شغالة أصلاً."""
+        if not self._run_lock.acquire(blocking=False):
+            return False
+        t0 = time.time()
+        try:
+            API_SYNC_STATUS.update({"running": True, "checked": 0, "price_changes": 0,
+                                    "availability_changes": 0, "errors": [], "providers": {}})
+            self._check_all_api_linked_subcategories()
+        except Exception as e:
+            logging.error(f"خطأ في مراقبة أسعار API: {e}")
+            API_SYNC_STATUS["errors"].append(str(e)[:200])
+        finally:
+            API_SYNC_STATUS.update({"running": False, "last_run": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                    "last_duration": round(time.time() - t0, 1)})
+            self._run_lock.release()
+        return True
 
     def _check_all_api_linked_subcategories(self):
         """مراقبة أسعار جميع الفئات المربوطة بـ API (سواء مستوردة أو مضافة يدوياً)"""
@@ -1174,6 +1241,8 @@ class ApiPriceMonitor:
 
                 if not isinstance(api_products, list):
                     logging.warning(f"استجابة المزود {provider_name} ليست قائمة منتجات")
+                    API_SYNC_STATUS["errors"].append(f"{provider_name}: استجابة المزود ليست قائمة منتجات")
+                    API_SYNC_STATUS["providers"][provider_name] = {"ok": False}
                     continue
 
                 # نبني قاموس للوصول السريع
@@ -1184,7 +1253,9 @@ class ApiPriceMonitor:
                 updated_count = 0
                 desc_changed = False
                 price_changes = []
+                avail_changes = []
                 _content_cache = {}
+                _sync_av = bool(API_SYNC_SETTINGS.get("sync_availability", True))
 
                 for subcat in subcats:
                     api_id = str(subcat.get('api_product_id', ''))
@@ -1192,7 +1263,26 @@ class ApiPriceMonitor:
 
                     if not api_product:
                         logging.warning(f"لم يتم العثور على المنتج {api_id} لدى المزود {provider_name}")
+                        # المنتج اختفى من قائمة المزود (والقائمة غير فارغة) → نعتبره غير متوفر
+                        if _sync_av and api_products and subcat.get('api_available') is not False:
+                            subcat['api_available'] = False
+                            subcat['api_missing'] = True
+                            avail_changes.append({"name": subcat.get('name'), "available": False})
+                            desc_changed = True
                         continue
+
+                    # مزامنة التوفر
+                    if _sync_av:
+                        _av = _as_bool_flag(api_product.get('available'))
+                        if _av is None and subcat.get('api_missing'):
+                            _av = True   # رجع للقائمة ولا في حقل available
+                        if _av is not None and (subcat.get('api_available') is not False) != _av:
+                            subcat['api_available'] = _av
+                            avail_changes.append({"name": subcat.get('name'), "available": _av})
+                            desc_changed = True
+                        if subcat.get('api_missing') and _av is not False:
+                            subcat.pop('api_missing', None)
+                            desc_changed = True
 
                     is_ctr = bool(subcat.get('is_counter'))
                     old_price = counter_unit_price(subcat) if is_ctr else _num(subcat.get('price', 0))
@@ -1265,6 +1355,15 @@ class ApiPriceMonitor:
                             "change_type": change_type
                         })
 
+                API_SYNC_STATUS["checked"] += len(subcats)
+                API_SYNC_STATUS["price_changes"] += updated_count
+                API_SYNC_STATUS["availability_changes"] += len(avail_changes)
+                API_SYNC_STATUS["providers"][provider_name] = {
+                    "ok": True, "checked": len(subcats), "price_changes": updated_count,
+                    "availability_changes": len(avail_changes)}
+                if avail_changes:
+                    self._send_availability_notification(provider_name, avail_changes)
+
                 if desc_changed and updated_count == 0:
                     save_json_file(SUBCATEGORIES_FILE, SUBCATEGORIES_DATA)
                     logging.info(f"تم تحديث أوصاف الفئات من المزود: {provider_name}")
@@ -1283,6 +1382,26 @@ class ApiPriceMonitor:
 
             except Exception as e:
                 logging.error(f"خطأ في فحص أسعار المزود {provider_name}: {e}")
+                API_SYNC_STATUS["errors"].append(f"{provider_name}: {str(e)[:150]}")
+                API_SYNC_STATUS["providers"][provider_name] = {"ok": False}
+
+    def _send_availability_notification(self, provider_name, items):
+        try:
+            _tg_tok, _tg_chat = tg_notify_target("prices")
+            if not _tg_tok or _tg_tok == "YOUR_TELEGRAM_BOT_TOKEN":
+                return
+            lines = ""
+            for it in items[:10]:
+                lines += f"{'✅ متوفر' if it['available'] else '⛔ غير متوفر'}: {it['name']}\n"
+            if len(items) > 10:
+                lines += f"... و {len(items) - 10} فئة أخرى"
+            payload = json.dumps({"chat_id": _tg_chat, "parse_mode": "HTML",
+                                  "text": f"<b>تغيّر توفر فئات API</b>\nالمزود: {provider_name}\n{lines}"}).encode("utf-8")
+            req = urllib.request.Request(f"https://api.telegram.org/bot{_tg_tok}/sendMessage", data=payload,
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            urllib.request.urlopen(req, timeout=8).read()
+        except Exception as e:
+            logging.error(f"فشل إشعار تغيّر التوفر: {e}")
 
     def _send_price_change_notification(self, provider_name, price_changes):
         _tg_tok, _tg_chat = tg_notify_target("prices")
@@ -1595,7 +1714,10 @@ def _job_snapshot(job):
             "counts": dict(job['counts']),
             "stats": dict(job['stats']),
             "message": job.get('message', ''),
-            "log": list(job['log'][-12:])
+            "log": list(job['log'][-30:]),
+            "failed": list(job.get('failed', []))[:100],
+            "elapsed": int(time.time() - job.get('created', time.time())),
+            "selective": bool(job.get('selective'))
         }
 
 
@@ -1622,8 +1744,19 @@ def _job_log(job, msg):
 
 class ApiTreeImport:
     def __init__(self, job, provider_name, token, base_url, root_id, site_category,
-                 original_name, margin, image, api_image, replace_legacy):
+                 original_name, margin, image, api_image, replace_legacy, selection=None):
         self.job = job
+        sel = selection or {}
+        _l1 = sel.get('include_l1')
+        self.include_l1 = set(str(x) for x in _l1) if isinstance(_l1, (list, set, tuple)) else None
+        _l2 = sel.get('include_l2')
+        self.include_l2 = ({str(k): set(str(x) for x in v) for k, v in _l2.items()
+                            if isinstance(v, (list, set, tuple)) and v} if isinstance(_l2, dict) else {})
+        self.include_root_leaves = bool(sel.get('include_root_leaves', True))
+        self.failed = []
+        self._fetch_failed = False
+        self._fetch_error = ''
+
         self.provider_name = provider_name
         self.token = token
         self.base_url = base_url if base_url.endswith('/') else base_url + '/'
@@ -1697,6 +1830,8 @@ class ApiTreeImport:
 
     def get_children(self, node_id, node=None):
         cats, prods, ok = [], [], False
+        self._fetch_failed = False
+        self._fetch_error = ''
         try:
             cats, prods = _extract_content_lists(self.fetch_content(node_id))
             ok = True
@@ -1705,6 +1840,8 @@ class ApiTreeImport:
         except Exception as e:
             self.log(f"تعذر قراءة محتوى {node_id}: {e}")
             _job_stat(self.job, 'errors')
+            self._fetch_failed = True
+            self._fetch_error = str(e)[:200]
         if not cats and not prods and isinstance(node, dict):
             # بعض الردود تحمل الأبناء داخل القسم نفسه
             cats, prods = _split_lists(node)
@@ -1915,7 +2052,7 @@ class ApiTreeImport:
         time.sleep(IMPORT_ITEM_DELAY)
 
     # ---------- المشي على الشجرة ----------
-    def process_node(self, node_id, node, level, site_product=None, group_id=None, prefix='', inherited_desc=''):
+    def process_node(self, node_id, node, level, site_product=None, group_id=None, prefix='', inherited_desc='', l1_id=None):
         self.check_cancel()
         key = str(node_id)
         if key in self.visited or level > IMPORT_MAX_DEPTH:
@@ -1928,6 +2065,20 @@ class ApiTreeImport:
         _job_set(self.job, current=name, phase=f"جاري سحب {labels.get(level, 'المحتوى')}: {name}")
 
         cats, prods = self.get_children(node_id, node)
+        if self._fetch_failed and not cats and not prods:
+            with IMPORT_JOBS_LOCK:
+                self.job.setdefault('failed', []).append({
+                    "id": str(node_id), "name": name, "level": level,
+                    "l1": str(l1_id) if l1_id is not None else None,
+                    "error": self._fetch_error})
+            self.failed.append(str(node_id))
+        # السحب المحدد: نفلتر الأبناء حسب اختيار الأدمن
+        if level == 0 and self.include_l1 is not None:
+            cats = [c for c in cats if str(c.get('id')) in self.include_l1]
+        elif level == 1 and self.include_l2:
+            _sel = self.include_l2.get(str(node_id))
+            if _sel:
+                cats = [c for c in cats if str(c.get('id')) in _sel]
         self.discovered += len(cats)
 
         _pdesc = (api_description(node)[0] if isinstance(node, dict) else '') or inherited_desc
@@ -1944,17 +2095,19 @@ class ApiTreeImport:
                 if level == 0:
                     sp = self.ensure_site_product(cid, cname, cimg)
                     _job_inc(self.job, 'subsections')
-                    self.process_node(cid, c, 1, site_product=sp, inherited_desc=_pdesc)
+                    self.process_node(cid, c, 1, site_product=sp, inherited_desc=_pdesc, l1_id=str(cid))
                 elif level == 1:
                     gid = self.ensure_group(site_product, cid, cname, cimg)
                     _job_inc(self.job, 'products')
-                    self.process_node(cid, c, 2, site_product=site_product, group_id=gid, inherited_desc=_pdesc)
+                    self.process_node(cid, c, 2, site_product=site_product, group_id=gid, inherited_desc=_pdesc, l1_id=l1_id)
                 else:
                     new_prefix = f"{prefix} - {cname}" if prefix else cname
-                    self.process_node(cid, c, level + 1, site_product=site_product, group_id=group_id, prefix=new_prefix, inherited_desc=_pdesc)
+                    self.process_node(cid, c, level + 1, site_product=site_product, group_id=group_id, prefix=new_prefix, inherited_desc=_pdesc, l1_id=l1_id)
 
         def do_leaves():
             if not prods:
+                return
+            if level == 0 and not self.include_root_leaves:
                 return
             target_product, target_group = site_product, group_id
             if level == 0:
@@ -2032,8 +2185,10 @@ class ApiTreeImport:
                 _job_set(job, status='done', percent=100, phase='انتهى السحب', current='',
                          message='ما وصلت أي فئة من المزود. تحقق من التوكن والرابط ومن أن القسم فيه محتوى.')
             else:
-                _job_set(job, status='done', percent=100, phase='اكتمل الاستيراد', current='',
-                         message='تم سحب الشجرة كاملة بنجاح')
+                _msg = 'تم سحب الشجرة كاملة بنجاح'
+                if self.failed:
+                    _msg = f'اكتمل السحب لكن فشل {len(self.failed)} عنصر. تقدر تعيد المحاولة للفاشل فقط.'
+                _job_set(job, status='done', percent=100, phase='اكتمل الاستيراد', current='', message=_msg)
             self.log("اكتمل الاستيراد")
         except ImportCancelled:
             self.save_all()
@@ -2054,7 +2209,7 @@ class ApiTreeImport:
 
 
 def start_api_tree_import(provider_name, token, base_url, root_id, site_category,
-                          original_name, margin, image, api_image, replace_legacy):
+                          original_name, margin, image, api_image, replace_legacy, selection=None):
     import_key = f"{provider_name}_{original_name}"
     with IMPORT_JOBS_LOCK:
         for j in IMPORT_JOBS.values():
@@ -2072,6 +2227,8 @@ def start_api_tree_import(provider_name, token, base_url, root_id, site_category
             "message": "",
             "log": [],
             "cancel": False,
+            "failed": [],
+            "selective": bool(selection and (selection.get('include_l1') is not None or selection.get('include_l2'))),
             "created": time.time()
         }
         IMPORT_JOBS[job['id']] = job
@@ -2080,7 +2237,7 @@ def start_api_tree_import(provider_name, token, base_url, root_id, site_category
         for old in finished[:-15]:
             IMPORT_JOBS.pop(old['id'], None)
     importer = ApiTreeImport(job, provider_name, token, base_url, root_id, site_category,
-                             original_name, margin, image, api_image, replace_legacy)
+                             original_name, margin, image, api_image, replace_legacy, selection=selection)
     threading.Thread(target=importer.run, daemon=True).start()
     return job, False
 
@@ -2865,6 +3022,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .search-input:focus { border-color: var(--accent-color); }
 
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 12px; padding: 10px 5px; }
+        .item-card.sub-unavailable { opacity: 0.5; filter: grayscale(1); position: relative; }
+        .item-card.sub-unavailable::after { content: "غير متوفر"; position: absolute; top: 8px; left: 8px; background: #dc2626; color: #fff; font-size: 0.62rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
         .item-card {
             background: transparent; border: none; display: flex; flex-direction: column;
             align-items: center; justify-content: flex-start; cursor: pointer;
@@ -6422,6 +6581,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     card.className = 'item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
                     card.onclick = () => openPurchaseModal(s);
+                    if (s.api_available === false) card.classList.add('sub-unavailable');
 
                     let imgHTML = s.image ? `<img src="${s.image}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('gem','item-img')}`;
 
@@ -6471,6 +6631,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     card.className = 'item-card';
                     card.style.transform = `scale(var(--category-card-scale))`;
                     card.onclick = () => openPurchaseModal(s);
+                    if (s.api_available === false) card.classList.add('sub-unavailable');
 
                     let imgHTML = s.image ? `<img src="${s.image}" class="item-img" loading="lazy" decoding="async" />` : `${codeEmoji('gem','item-img')}`;
 
@@ -7166,6 +7327,10 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         document.getElementById('walletDateTo').addEventListener('change', renderMyWallet);
 
         function openPurchaseModal(subcat) {
+            if (subcat && subcat.api_available === false) {
+                alert('هذه الفئة غير متوفرة حالياً، جرّب لاحقاً');
+                return;
+            }
             activeSubCategory = subcat;
             isCounterCategory = subcat.is_counter === true;
             
@@ -8272,6 +8437,52 @@ ADMIN_HTML_CONTENT = """
         .import-current { min-height: 1.2em; font-size: 0.75rem; color: #a1a1aa; text-align: center; overflow-wrap: anywhere; line-height: 1.4; }
         .import-actions { display: flex; gap: 8px; }
         .import-actions button { flex: 1; }
+        .import-modal-box.wide { max-width: 560px; max-height: 92vh; overflow-y: auto; }
+        .import-meta { font-size: 0.72rem; color: #a1a1aa; text-align: center; line-height: 1.6; direction: rtl; }
+        .import-failed { background: rgba(239,68,68,0.12); border: 1px solid #ef4444; color: #fca5a5; border-radius: 10px; padding: 10px; font-size: 0.75rem; line-height: 1.6; overflow-wrap: anywhere; }
+        body.light-mode-admin .import-failed { color: #b91c1c; }
+        .import-log-box { border: 1px solid #27272a; border-radius: 10px; padding: 8px 10px; }
+        .import-log-box summary { cursor: pointer; font-size: 0.75rem; font-weight: 700; color: #a1a1aa; }
+        .import-log-box pre { margin: 8px 0 0; max-height: 150px; overflow: auto; font-size: 0.68rem; line-height: 1.5; color: #d4d4d8; white-space: pre-wrap; direction: rtl; text-align: right; }
+        body.light-mode-admin .import-log-box pre { color: #3f3f46; }
+        .sel-mode { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.85rem; font-weight: 700; }
+        .sel-mode label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .sel-toolbar { display: flex; gap: 6px; align-items: center; }
+        .sel-toolbar input { flex: 1; min-width: 0; }
+        .sel-toolbar button { white-space: nowrap; padding: 8px 10px; font-size: 0.72rem; }
+        .sel-status { font-size: 0.78rem; color: #a1a1aa; text-align: center; }
+        .sel-status.err { color: #f87171; }
+        .sel-list { max-height: 260px; overflow-y: auto; border: 1px solid #27272a; border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+        .sel-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,0.03); font-size: 0.82rem; font-weight: 700; cursor: pointer; }
+        body.light-mode-admin .sel-row { background: #f4f4f5; }
+        .sel-row .sel-name { flex: 1; overflow-wrap: anywhere; }
+        .sel-row .sel-badge { font-size: 0.6rem; background: #f59e0b; color: #000; border-radius: 8px; padding: 2px 6px; font-weight: 800; }
+        .sel-row .sel-more { background: transparent; border: 1px solid #38bdf8; color: #38bdf8; border-radius: 8px; font-size: 0.68rem; padding: 3px 8px; cursor: pointer; font-weight: 700; }
+        .sel-kids { margin: 2px 22px 6px 0; display: flex; flex-direction: column; gap: 3px; }
+        .sel-kids .sel-row { font-size: 0.76rem; font-weight: 600; }
+        .sel-summary { font-size: 0.78rem; font-weight: 800; color: #4ade80; text-align: center; }
+        .sync-card { width: 100%; padding: 14px; background: #121212; border: 1px solid #27272a; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+        body.light-mode-admin .sync-card { background: #ffffff; border-color: #e4e4e7; }
+        .sync-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; font-weight: 800; color: #38bdf8; }
+        .sync-dot { width: 10px; height: 10px; border-radius: 50%; background: #71717a; }
+        .sync-dot.on { background: #4ade80; box-shadow: 0 0 8px #4ade80; }
+        .sync-dot.run { background: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
+        .sync-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 0.8rem; font-weight: 700; }
+        .sync-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+        .sync-row select { padding: 7px 10px; background: #000; border: 1px solid #38bdf8; border-radius: 8px; color: #fff; font-weight: 700; }
+        body.light-mode-admin .sync-row select { background: #f4f4f5; color: #09090b; }
+        .sync-row button { padding: 8px 14px; font-size: 0.78rem; }
+        .sync-stats { font-size: 0.74rem; color: #a1a1aa; line-height: 1.8; }
+        .sync-errors { font-size: 0.72rem; color: #f87171; line-height: 1.7; overflow-wrap: anywhere; }
+        .sel-row input[type=checkbox], .sel-mode input[type=radio], .sync-row input[type=checkbox] { width: 18px !important; height: 18px !important; min-width: 18px; padding: 0 !important; margin: 0; flex: 0 0 auto; accent-color: #22c55e; cursor: pointer; }
+        .sel-row .sel-name { min-width: 0; text-align: right; }
+        .sel-row .sel-more { width: auto !important; flex: 0 0 auto; white-space: nowrap; }
+        .sel-list .sel-row { width: auto; }
+        .sync-row select { width: auto !important; flex: 0 0 auto; }
+        .sync-row label, .sel-mode label { white-space: nowrap; }
+        .sync-row button { width: auto !important; flex: 0 0 auto; }
+        .sel-toolbar input { width: auto !important; flex: 1 1 120px; padding: 10px 12px !important; }
+        .sel-toolbar button { width: auto !important; flex: 0 0 auto; }
         .api-category-badge { position: absolute; top: 8px; right: 8px; background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; font-size: 0.6rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
         .price-monitor-badge { position: absolute; top: 8px; left: 8px; background: linear-gradient(135deg, #0284c7, #38bdf8); color: #fff; font-size: 0.6rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
         #adminLoginScreen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #050508; z-index: 999999; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; padding: 20px; }
@@ -10346,6 +10557,25 @@ ADMIN_HTML_CONTENT = """
                 <button class="btn-secondary" onclick="closeApiImportScreen()">رجوع</button>
             </div>
 
+            <div class="sync-card" id="apiSyncCard">
+                <div class="sync-head"><span>المزامنة التلقائية للأسعار والتوفر</span><span class="sync-dot" id="apiSyncDot"></span></div>
+                <div class="sync-row">
+                    <label><input type="checkbox" id="apiSyncEnabled" onchange="saveApiSyncSettings()"> مفعّلة</label>
+                    <label><input type="checkbox" id="apiSyncAvail" onchange="saveApiSyncSettings()"> مزامنة التوفر</label>
+                    <span>كل</span>
+                    <select id="apiSyncInterval" onchange="saveApiSyncSettings()">
+                        <option value="1">1 دقيقة</option>
+                        <option value="5">5 دقائق</option>
+                        <option value="15">15 دقيقة</option>
+                        <option value="30">30 دقيقة</option>
+                        <option value="60">ساعة</option>
+                    </select>
+                    <button class="btn-secondary" id="apiSyncNowBtn" onclick="runApiSyncNow()">مزامنة الآن</button>
+                </div>
+                <div class="sync-stats" id="apiSyncStats">جاري التحميل...</div>
+                <div class="sync-errors" id="apiSyncErrors"></div>
+            </div>
+
             <div class="api-provider-select-box">
                 <label style="font-size:0.85rem; color:#a1a1aa; font-weight:700;">اختر المزود:</label>
                 <select id="apiImportProviderSelect" onchange="loadApiImportCategories()">
@@ -10358,7 +10588,7 @@ ADMIN_HTML_CONTENT = """
             </div>
 
             <div class="import-modal-overlay" id="importProgressModal">
-                <div class="import-modal-box">
+                <div class="import-modal-box wide">
                     <div class="import-spinner" id="importSpinner"></div>
                     <div style="font-size:1rem; font-weight:800; text-align:center; color:#4ade80;" id="importProgressTitle">جاري الاستيراد...</div>
                     <div class="import-progress-bar">
@@ -10371,15 +10601,19 @@ ADMIN_HTML_CONTENT = """
                         <div class="import-counter"><div class="import-counter-num" id="importCountCat">0</div><div class="import-counter-lbl">فئات</div></div>
                     </div>
                     <div class="import-current" id="importCurrentItem"></div>
+                    <div class="import-meta" id="importMeta"></div>
+                    <div class="import-failed" id="importFailedBox" style="display:none;"></div>
+                    <details class="import-log-box"><summary>سجل العمليات</summary><pre id="importLogPre"></pre></details>
                     <div class="import-actions">
                         <button class="btn-secondary" id="importCancelBtn" onclick="cancelApiImport()">إيقاف الاستيراد</button>
+                        <button class="save-btn" id="importRetryBtn" style="display:none; background:linear-gradient(135deg, #d97706, #f59e0b);" onclick="retryFailedImport()">إعادة محاولة الفاشل</button>
                         <button class="save-btn" id="importCloseBtn" style="display:none;" onclick="closeImportProgress()">تم</button>
                     </div>
                 </div>
             </div>
 
             <div class="import-modal-overlay" id="importDetailsModal">
-                <div class="import-modal-box">
+                <div class="import-modal-box wide">
                     <div style="font-size:1rem; font-weight:800; text-align:center; color:#4ade80;">استيراد القسم</div>
                     <div class="form-group">
                         <label>اسم القسم الجديد:</label>
@@ -10391,7 +10625,24 @@ ADMIN_HTML_CONTENT = """
                     </div>
                     <div class="form-group">
                         <label>نسبة الربح (%):</label>
-                        <input type="number" id="importProfitMarginInput" placeholder="مثال: 10" step="0.1" min="0" value="10">
+                        <input type="number" id="importProfitMarginInput" placeholder="مثال: 10" step="0.1" min="0" max="1000" value="10">
+                    </div>
+                    <div class="form-group">
+                        <label>شو بدك تسحب؟</label>
+                        <div class="sel-mode">
+                            <label><input type="radio" name="importScope" value="all" checked onchange="onImportScopeChange()"> القسم كله</label>
+                            <label><input type="radio" name="importScope" value="select" onchange="onImportScopeChange()"> اختيار أقسام ومنتجات محددة</label>
+                        </div>
+                    </div>
+                    <div id="importSelectionBox" style="display:none; flex-direction:column; gap:8px;">
+                        <div class="sel-toolbar">
+                            <input type="text" id="importSelSearch" placeholder="بحث بالأقسام..." oninput="renderImportSelection()">
+                            <button class="btn-secondary" onclick="setAllImportSel(true)">تحديد الكل</button>
+                            <button class="btn-secondary" onclick="setAllImportSel(false)">إلغاء الكل</button>
+                        </div>
+                        <div class="sel-status" id="importSelStatus"></div>
+                        <div class="sel-list" id="importSelList"></div>
+                        <div class="sel-summary" id="importSelSummary"></div>
                     </div>
                     <button class="save-btn" style="background:linear-gradient(135deg, #16a34a, #22c55e);" onclick="confirmApiImport()">تأكيد الاستيراد</button>
                     <button class="btn-secondary" onclick="closeModal('importDetailsModal')">إلغاء</button>
@@ -12857,6 +13108,7 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('deleteProductPage').style.display = 'none';
             document.getElementById('clientsListScreen').classList.remove('active');
             document.getElementById('apiImportScreen').classList.add('active');
+            startApiSyncPolling();
 
             fetch('/api/get_providers')
                 .then(r => r.json())
@@ -12871,6 +13123,7 @@ ADMIN_HTML_CONTENT = """
         }
 
         function closeApiImportScreen() {
+            stopApiSyncPolling();
             document.getElementById('apiImportScreen').classList.remove('active');
             document.getElementById('adminMainSection').style.display = 'block';
             fetchStatsAndRender();
@@ -12970,6 +13223,335 @@ ADMIN_HTML_CONTENT = """
             });
         }
 
+        // ================= المزامنة التلقائية للأسعار والتوفر =================
+        let apiSyncTimer = null;
+        let apiSyncBusy = false;
+
+        function startApiSyncPolling() {
+            loadApiSyncStatus();
+            if (apiSyncTimer) clearInterval(apiSyncTimer);
+            apiSyncTimer = setInterval(loadApiSyncStatus, 8000);
+        }
+        function stopApiSyncPolling() {
+            if (apiSyncTimer) clearInterval(apiSyncTimer);
+            apiSyncTimer = null;
+        }
+        async function loadApiSyncStatus() {
+            if (apiSyncBusy) return;
+            try {
+                const r = await fetch('/api/api_sync_status');
+                const d = await r.json();
+                if (!d || !d.settings) return;
+                renderApiSyncStatus(d);
+            } catch (e) { /* ننتظر الدورة الجاية */ }
+        }
+        function renderApiSyncStatus(d) {
+            const st = d.status || {};
+            const se = d.settings || {};
+            document.getElementById('apiSyncEnabled').checked = !!se.enabled;
+            document.getElementById('apiSyncAvail').checked = !!se.sync_availability;
+            document.getElementById('apiSyncInterval').value = String(se.interval_min || 5);
+            const dot = document.getElementById('apiSyncDot');
+            dot.className = 'sync-dot' + (st.running ? ' run' : (se.enabled ? ' on' : ''));
+            const btn = document.getElementById('apiSyncNowBtn');
+            btn.disabled = !!st.running;
+            btn.innerText = st.running ? 'جاري المزامنة...' : 'مزامنة الآن';
+            const lines = [];
+            if (st.last_run) {
+                lines.push('آخر مزامنة: ' + st.last_run + ' (' + (st.last_duration || 0) + ' ث) — فُحصت ' + (st.checked || 0) + ' فئة | أسعار تغيّرت: ' + (st.price_changes || 0) + ' | توفر تغيّر: ' + (st.availability_changes || 0));
+            } else {
+                lines.push('ما صارت مزامنة بعد' + (se.enabled ? ' (أول مزامنة بتصير بعد قليل)' : ''));
+            }
+            if (se.enabled && st.next_run) lines.push('المزامنة الجاية: ' + st.next_run);
+            if (!se.enabled) lines.push('المزامنة التلقائية متوقفة. الأسعار والتوفر ما رح تتحدّث إلا بالضغط على (مزامنة الآن).');
+            lines.push('فئات مربوطة بـ API: ' + (d.linked_count || 0) + ' | غير متوفرة حالياً: ' + (d.unavailable_count || 0) + (d.unavailable_sample && d.unavailable_sample.length ? ' (' + d.unavailable_sample.join('، ') + (d.unavailable_count > d.unavailable_sample.length ? ' ...' : '') + ')' : ''));
+            document.getElementById('apiSyncStats').innerText = lines.join(String.fromCharCode(10));
+            const errs = Array.isArray(st.errors) ? st.errors : [];
+            document.getElementById('apiSyncErrors').innerText = errs.length ? ('تنبيهات: ' + errs.slice(0, 4).join(' | ')) : '';
+        }
+        async function saveApiSyncSettings() {
+            apiSyncBusy = true;
+            try {
+                const r = await fetch('/api/api_sync_settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        enabled: document.getElementById('apiSyncEnabled').checked,
+                        sync_availability: document.getElementById('apiSyncAvail').checked,
+                        interval_min: parseInt(document.getElementById('apiSyncInterval').value, 10)
+                    })
+                });
+                const d = await r.json();
+                if (d.status !== 'success') alert('تعذر حفظ إعدادات المزامنة: ' + (d.message || 'خطأ غير معروف'));
+            } catch (e) {
+                alert('فشل الاتصال بالسيرفر: ' + e.message);
+            }
+            apiSyncBusy = false;
+            loadApiSyncStatus();
+        }
+        async function runApiSyncNow() {
+            const btn = document.getElementById('apiSyncNowBtn');
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/api_sync_now', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                await r.json();
+            } catch (e) {
+                alert('فشل الاتصال بالسيرفر: ' + e.message);
+            }
+            setTimeout(loadApiSyncStatus, 1200);
+        }
+
+        // ================= اختيار ما يُسحب =================
+        let importSel = { items: [], rootLeaves: 0, includeRoot: true, loaded: false, loading: false };
+        let lastImportParams = null;
+        let lastFailedList = [];
+
+        function importScopeValue() {
+            const el = document.querySelector('input[name="importScope"]:checked');
+            return el ? el.value : 'all';
+        }
+
+        async function onImportScopeChange() {
+            const on = importScopeValue() === 'select';
+            document.getElementById('importSelectionBox').style.display = on ? 'flex' : 'none';
+            if (on && !importSel.loaded && !importSel.loading) await loadImportSelectionTree();
+        }
+
+        async function loadImportSelectionTree() {
+            const st = document.getElementById('importSelStatus');
+            importSel.loading = true;
+            st.className = 'sel-status';
+            st.innerText = 'جاري قراءة أقسام المزود...';
+            try {
+                const r = await fetch('/api/api_tree_preview', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider_name: apiImportCurrentProvider,
+                        category_id: apiImportCategoryToImport.id,
+                        original_category_name: apiImportCategoryToImport.name
+                    })
+                });
+                const d = await r.json();
+                if (d.status !== 'success') throw new Error(d.message || 'تعذر قراءة الأقسام');
+                importSel.items = (d.subsections || []).map(x => ({
+                    id: x.id, name: x.name, imported: !!x.imported, checked: true,
+                    open: false, children: null, loadingKids: false, kidsErr: ''
+                }));
+                importSel.rootLeaves = d.root_leaves || 0;
+                importSel.includeRoot = true;
+                importSel.loaded = true;
+                st.innerText = (importSel.items.length || importSel.rootLeaves) ? '' : 'هذا القسم فاضي عند المزود.';
+            } catch (e) {
+                st.className = 'sel-status err';
+                st.innerHTML = '';
+                const msg = document.createElement('div');
+                msg.textContent = 'تعذر قراءة الأقسام: ' + (e.message || 'فشل الاتصال');
+                const again = document.createElement('button');
+                again.className = 'btn-secondary';
+                again.style.marginTop = '6px';
+                again.textContent = 'إعادة المحاولة';
+                again.onclick = () => loadImportSelectionTree();
+                st.appendChild(msg);
+                st.appendChild(again);
+            }
+            importSel.loading = false;
+            renderImportSelection();
+        }
+
+        async function loadImportKids(it) {
+            it.loadingKids = true;
+            it.kidsErr = '';
+            renderImportSelection();
+            try {
+                const r = await fetch('/api/api_tree_children', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ provider_name: apiImportCurrentProvider, node_id: it.id })
+                });
+                const d = await r.json();
+                if (d.status !== 'success') throw new Error(d.message || 'تعذر قراءة المحتوى');
+                it.children = (d.children || []).map(c => ({ id: c.id, name: c.name, checked: it.checked }));
+            } catch (e) {
+                it.kidsErr = e.message || 'فشل الاتصال';
+            }
+            it.loadingKids = false;
+            renderImportSelection();
+        }
+
+        function toggleImportKids(it) {
+            it.open = !it.open;
+            if (it.open && it.children === null && !it.loadingKids) { loadImportKids(it); return; }
+            renderImportSelection();
+        }
+
+        function setAllImportSel(v) {
+            importSel.items.forEach(it => {
+                it.checked = v;
+                if (it.children) it.children.forEach(c => { c.checked = v; });
+            });
+            importSel.includeRoot = v;
+            renderImportSelection();
+        }
+
+        function updateImportSelSummary() {
+            const total = importSel.items.length;
+            const on = importSel.items.filter(i => i.checked).length;
+            let txt = 'المختار: ' + on + ' من ' + total + ' قسم فرعي';
+            const partial = importSel.items.filter(i => i.checked && i.children && i.children.some(c => !c.checked)).length;
+            if (partial) txt += ' (' + partial + ' منها بمنتجات محددة)';
+            document.getElementById('importSelSummary').innerText = importSel.loaded ? txt : '';
+        }
+
+        function renderImportSelection() {
+            const list = document.getElementById('importSelList');
+            const keepScroll = list.scrollTop;
+            list.innerHTML = '';
+            const q = (document.getElementById('importSelSearch').value || '').trim().toLowerCase();
+
+            if (importSel.rootLeaves > 0) {
+                const row = document.createElement('label');
+                row.className = 'sel-row';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = importSel.includeRoot;
+                cb.onchange = () => { importSel.includeRoot = cb.checked; updateImportSelSummary(); };
+                const sp = document.createElement('span');
+                sp.className = 'sel-name';
+                sp.textContent = 'الفئات المباشرة تحت القسم (' + importSel.rootLeaves + ')';
+                row.appendChild(cb);
+                row.appendChild(sp);
+                list.appendChild(row);
+            }
+
+            importSel.items.forEach(it => {
+                if (q && String(it.name).toLowerCase().indexOf(q) === -1) return;
+                const wrap = document.createElement('div');
+                const row = document.createElement('div');
+                row.className = 'sel-row';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = it.checked;
+                cb.onchange = () => {
+                    it.checked = cb.checked;
+                    if (it.children) it.children.forEach(c => { c.checked = cb.checked; });
+                    renderImportSelection();
+                };
+                const nm = document.createElement('span');
+                nm.className = 'sel-name';
+                nm.textContent = it.name;
+                nm.onclick = () => { cb.checked = !cb.checked; cb.onchange(); };
+                row.appendChild(cb);
+                row.appendChild(nm);
+                if (it.imported) {
+                    const b = document.createElement('span');
+                    b.className = 'sel-badge';
+                    b.textContent = 'مسحوب سابقاً';
+                    row.appendChild(b);
+                }
+                const more = document.createElement('button');
+                more.className = 'sel-more';
+                more.textContent = it.open ? 'إخفاء' : 'اختيار المنتجات';
+                more.onclick = () => toggleImportKids(it);
+                row.appendChild(more);
+                wrap.appendChild(row);
+
+                if (it.open) {
+                    const kids = document.createElement('div');
+                    kids.className = 'sel-kids';
+                    if (it.loadingKids) {
+                        kids.innerHTML = '<div class="sel-status">جاري التحميل...</div>';
+                    } else if (it.kidsErr) {
+                        const e = document.createElement('div');
+                        e.className = 'sel-status err';
+                        e.textContent = 'تعذر التحميل: ' + it.kidsErr + ' ';
+                        const again = document.createElement('button');
+                        again.className = 'btn-secondary';
+                        again.textContent = 'إعادة المحاولة';
+                        again.onclick = () => loadImportKids(it);
+                        e.appendChild(again);
+                        kids.appendChild(e);
+                    } else if (it.children && it.children.length === 0) {
+                        kids.innerHTML = '<div class="sel-status">ما في منتجات فرعية، الفئات مباشرة داخل هذا القسم.</div>';
+                    } else if (it.children) {
+                        it.children.forEach(c => {
+                            const crow = document.createElement('label');
+                            crow.className = 'sel-row';
+                            const ccb = document.createElement('input');
+                            ccb.type = 'checkbox';
+                            ccb.checked = c.checked;
+                            ccb.onchange = () => {
+                                c.checked = ccb.checked;
+                                it.checked = it.children.some(x => x.checked);
+                                renderImportSelection();
+                            };
+                            const cn = document.createElement('span');
+                            cn.className = 'sel-name';
+                            cn.textContent = c.name;
+                            crow.appendChild(ccb);
+                            crow.appendChild(cn);
+                            kids.appendChild(crow);
+                        });
+                    }
+                    wrap.appendChild(kids);
+                }
+                list.appendChild(wrap);
+            });
+            list.scrollTop = keepScroll;
+            updateImportSelSummary();
+        }
+
+        function buildImportSelection() {
+            if (importScopeValue() !== 'select') return null;
+            const chosen = importSel.items.filter(i => i.checked);
+            const include_l2 = {};
+            chosen.forEach(i => {
+                if (i.children && i.children.length) {
+                    const on = i.children.filter(c => c.checked);
+                    if (on.length && on.length < i.children.length) include_l2[i.id] = on.map(c => c.id);
+                }
+            });
+            return {
+                include_l1: chosen.map(i => i.id),
+                include_l2: include_l2,
+                include_root_leaves: importSel.rootLeaves > 0 ? importSel.includeRoot : false
+            };
+        }
+
+        // يبني اختيار "الفاشل فقط" من قائمة العناصر اللي فشلت، مع احترام الاختيار الأصلي
+        function selectionFromFailed(failed, orig) {
+            const l1 = new Set();
+            const l2 = {};
+            const origL2 = (orig && orig.include_l2) ? orig.include_l2 : {};
+            let rootFail = false;
+            failed.forEach(f => {
+                const lvl = f.level;
+                if (lvl === 0) { rootFail = true; return; }
+                if (lvl === 1) {
+                    l1.add(String(f.id));
+                    if (origL2[String(f.id)]) l2[String(f.id)] = origL2[String(f.id)];
+                } else if (f.l1) {
+                    const k = String(f.l1);
+                    l1.add(k);
+                    if (lvl === 2) {
+                        if (!l2[k]) l2[k] = [];
+                        l2[k].push(String(f.id));
+                    } else if (origL2[k]) {
+                        l2[k] = origL2[k];
+                    } else {
+                        l2[k] = null;
+                    }
+                }
+            });
+            // أي قسم فيه فشل بمستوى أعمق (3+) بدون اختيار أصلي = نعيده كامل
+            Object.keys(l2).forEach(k => { if (l2[k] === null) delete l2[k]; });
+            failed.forEach(f => {
+                if (f.level === 1 && !origL2[String(f.id)]) delete l2[String(f.id)];
+            });
+            if (rootFail) return null;
+            return { include_l1: Array.from(l1), include_l2: l2, include_root_leaves: false };
+        }
+
         function openImportDetailsModal(idx) {
             const cat = apiImportCategories[idx];
             if (!cat) return;
@@ -12984,6 +13566,20 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('importCategoryImageInput').value = '';
             const m = info.profit_margin;
             document.getElementById('importProfitMarginInput').value = (m !== undefined && m !== null && m !== '') ? m : '10';
+            importSel = { items: [], rootLeaves: 0, includeRoot: true, loaded: false, loading: false };
+            const allRadio = document.querySelector('input[name="importScope"][value="all"]');
+            const selRadio = document.querySelector('input[name="importScope"][value="select"]');
+            if (allRadio) allRadio.checked = true;
+            if (selRadio) {
+                // النسخة القديمة لازم تنسحب كاملة (بتنحذف فئاتها القديمة)
+                selRadio.disabled = apiImportCategoryToImport.legacy;
+                selRadio.parentElement.style.opacity = apiImportCategoryToImport.legacy ? '0.4' : '1';
+            }
+            document.getElementById('importSelectionBox').style.display = 'none';
+            document.getElementById('importSelList').innerHTML = '';
+            document.getElementById('importSelStatus').innerHTML = '';
+            document.getElementById('importSelSummary').innerText = '';
+            document.getElementById('importSelSearch').value = '';
             openModal('importDetailsModal');
         }
 
@@ -12997,9 +13593,20 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('importCountProd').innerText = '0';
             document.getElementById('importCountCat').innerText = '0';
             document.getElementById('importCurrentItem').innerText = '';
+            document.getElementById('importMeta').innerText = '';
+            document.getElementById('importLogPre').textContent = '';
+            document.getElementById('importFailedBox').style.display = 'none';
+            document.getElementById('importRetryBtn').style.display = 'none';
             document.getElementById('importCancelBtn').style.display = 'block';
             document.getElementById('importCancelBtn').disabled = false;
             document.getElementById('importCloseBtn').style.display = 'none';
+        }
+
+        function fmtImportTime(sec) {
+            sec = Math.max(0, Math.round(sec || 0));
+            const m = Math.floor(sec / 60);
+            const r = sec % 60;
+            return m + ':' + (r < 10 ? '0' : '') + r;
         }
 
         function renderImportProgress(j) {
@@ -13010,6 +13617,18 @@ ADMIN_HTML_CONTENT = """
             document.getElementById('importCountProd').innerText = c.products || 0;
             document.getElementById('importCountCat').innerText = c.categories || 0;
             document.getElementById('importCurrentItem').innerText = j.current || '';
+            const st = j.stats || {};
+            let meta = 'الوقت: ' + fmtImportTime(j.elapsed);
+            if (j.status === 'running' && (j.percent || 0) >= 8) {
+                meta += ' | المتبقي تقريباً: ' + fmtImportTime(j.elapsed * (100 - j.percent) / j.percent);
+            }
+            meta += ' | جديد: ' + (st.added || 0) + ' | محدّث: ' + (st.updated || 0);
+            if (st.errors) meta += ' | أخطاء: ' + st.errors;
+            if (j.selective) meta += ' | سحب محدد';
+            document.getElementById('importMeta').innerText = meta;
+            const pre = document.getElementById('importLogPre');
+            pre.textContent = (j.log || []).join(String.fromCharCode(10));
+            pre.scrollTop = pre.scrollHeight;
         }
 
         function onImportFinished(j) {
@@ -13020,7 +13639,7 @@ ADMIN_HTML_CONTENT = """
             let extra = '';
             if (j.status === 'done') {
                 document.getElementById('importProgressFill').style.width = '100%';
-                document.getElementById('importProgressTitle').innerText = 'اكتمل الاستيراد';
+                document.getElementById('importProgressTitle').innerText = (j.failed && j.failed.length) ? 'اكتمل مع أخطاء' : 'اكتمل الاستيراد';
                 extra = ' — جديد: ' + (s.added || 0) + ' | محدّث: ' + (s.updated || 0) + (s.errors ? ' | أخطاء: ' + s.errors : '');
             } else if (j.status === 'cancelled') {
                 document.getElementById('importProgressTitle').innerText = 'تم إيقاف الاستيراد';
@@ -13028,7 +13647,53 @@ ADMIN_HTML_CONTENT = """
                 document.getElementById('importProgressTitle').innerText = 'فشل الاستيراد';
             }
             document.getElementById('importProgressText').innerText = (j.message || '') + extra;
+            lastFailedList = Array.isArray(j.failed) ? j.failed : [];
+            const fbox = document.getElementById('importFailedBox');
+            const rbtn = document.getElementById('importRetryBtn');
+            if (lastFailedList.length && j.status !== 'cancelled' && lastImportParams) {
+                const names = lastFailedList.slice(0, 6).map(f => f.name).join('، ');
+                fbox.innerText = 'فشل ' + lastFailedList.length + ' عنصر: ' + names + (lastFailedList.length > 6 ? ' ...' : '') + (lastFailedList[0].error ? ' — السبب: ' + lastFailedList[0].error : '');
+                fbox.style.display = 'block';
+                rbtn.style.display = 'block';
+            } else {
+                fbox.style.display = 'none';
+                rbtn.style.display = 'none';
+            }
             localStorage.removeItem('apiImportJobId');
+        }
+
+        async function startImportJob(body) {
+            resetImportProgressUI();
+            try {
+                const res = await fetch('/api/import_api_category_full', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (data.status === 'started' || data.status === 'running') {
+                    apiImportJobId = data.job_id;
+                    localStorage.setItem('apiImportJobId', apiImportJobId);
+                    pollApiImport();
+                } else {
+                    document.getElementById('importProgressModal').classList.remove('active');
+                    alert('فشل الاستيراد: ' + (data.message || 'خطأ غير معروف'));
+                }
+            } catch (e) {
+                document.getElementById('importProgressModal').classList.remove('active');
+                alert('فشل الاتصال بالخادم: ' + e.message);
+            }
+        }
+
+        async function retryFailedImport() {
+            if (!lastImportParams || !lastFailedList.length) return;
+            const orig = lastImportParams.selection || null;
+            const sel = selectionFromFailed(lastFailedList, orig);
+            const body = Object.assign({}, lastImportParams, { image: '', replace_legacy: false });
+            if (sel) body.selection = sel;
+            else if (orig) body.selection = orig;
+            else delete body.selection;
+            await startImportJob(body);
         }
 
         function closeImportProgress() {
@@ -13040,10 +13705,12 @@ ADMIN_HTML_CONTENT = """
 
         function pollApiImport() {
             if (apiImportPollTimer) clearInterval(apiImportPollTimer);
+            let fails = 0;
             const tick = async () => {
                 try {
                     const r = await fetch('/api/import_progress?job_id=' + encodeURIComponent(apiImportJobId));
                     const j = await r.json();
+                    fails = 0;
                     if (j.status === 'unknown') {
                         clearInterval(apiImportPollTimer);
                         apiImportPollTimer = null;
@@ -13058,7 +13725,10 @@ ADMIN_HTML_CONTENT = """
                         onImportFinished(j);
                     }
                 } catch (e) {
-                    /* انقطاع بسيط بالشبكة: نكمل المحاولة */
+                    fails++;
+                    if (fails >= 4) {
+                        document.getElementById('importProgressText').innerText = 'انقطع الاتصال بالسيرفر، عم نعيد المحاولة... (السحب بيكمّل بالخلفية)';
+                    }
                 }
             };
             apiImportPollTimer = setInterval(tick, 700);
@@ -13099,12 +13769,29 @@ ADMIN_HTML_CONTENT = """
             if (!apiImportCategoryToImport) return;
 
             const newName = document.getElementById('importCategoryNameInput').value.trim();
-            const profitMargin = parseFloat(document.getElementById('importProfitMarginInput').value) || 0;
+            const marginRaw = document.getElementById('importProfitMarginInput').value;
+            const profitMargin = marginRaw === '' ? 0 : parseFloat(marginRaw);
             const fileInput = document.getElementById('importCategoryImageInput');
 
             if (!newName) {
                 alert('يرجى إدخال اسم القسم!');
                 return;
+            }
+            if (isNaN(profitMargin) || profitMargin < 0 || profitMargin > 1000) {
+                alert('نسبة الربح لازم تكون رقم بين 0 و 1000');
+                return;
+            }
+
+            const selection = buildImportSelection();
+            if (importScopeValue() === 'select') {
+                if (!importSel.loaded) {
+                    alert('لسا ما انقرأت أقسام المزود، استنى لحظة أو أعد المحاولة.');
+                    return;
+                }
+                if (!selection.include_l1.length && !selection.include_root_leaves) {
+                    alert('ما اخترت أي قسم للسحب!');
+                    return;
+                }
             }
 
             let replaceLegacy = false;
@@ -13112,9 +13799,6 @@ ADMIN_HTML_CONTENT = """
                 replaceLegacy = confirm('هذا القسم مستورد بالنسخة القديمة. رح نحذف فئاته القديمة ونسحبه من جديد بالشجرة الكاملة (أقسام فرعية ← منتجات ← فئات). متابعة؟');
                 if (!replaceLegacy) return;
             }
-
-            closeModal('importDetailsModal');
-            resetImportProgressUI();
 
             let imageData = '';
             if (fileInput.files && fileInput.files[0]) {
@@ -13125,48 +13809,37 @@ ADMIN_HTML_CONTENT = """
                 });
             }
 
-            const providersRes = await fetch('/api/get_providers');
-            const providers = await providersRes.json();
-            const provider = providers.find(p => p.name === apiImportCurrentProvider);
-
+            let provider = null;
+            try {
+                const providersRes = await fetch('/api/get_providers');
+                const providers = await providersRes.json();
+                provider = providers.find(p => p.name === apiImportCurrentProvider);
+            } catch (e) {
+                alert('فشل الاتصال بالخادم: ' + e.message);
+                return;
+            }
             if (!provider) {
                 alert('المزود غير موجود!');
-                document.getElementById('importProgressModal').classList.remove('active');
                 return;
             }
 
-            try {
-                const res = await fetch('/api/import_api_category_full', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        provider_name: apiImportCurrentProvider,
-                        token: provider.token,
-                        url: provider.url,
-                        category_id: apiImportCategoryToImport.id,
-                        category_name: newName,
-                        original_category_name: apiImportCategoryToImport.name,
-                        profit_margin: profitMargin,
-                        image: imageData,
-                        api_image: apiImportCategoryToImport.image || '',
-                        replace_legacy: replaceLegacy
-                    })
-                });
+            closeModal('importDetailsModal');
 
-                const data = await res.json();
-
-                if (data.status === 'started' || data.status === 'running') {
-                    apiImportJobId = data.job_id;
-                    localStorage.setItem('apiImportJobId', apiImportJobId);
-                    pollApiImport();
-                } else {
-                    document.getElementById('importProgressModal').classList.remove('active');
-                    alert('فشل الاستيراد: ' + (data.message || 'خطأ غير معروف'));
-                }
-            } catch (e) {
-                document.getElementById('importProgressModal').classList.remove('active');
-                alert('فشل الاتصال بالخادم: ' + e.message);
-            }
+            const body = {
+                provider_name: apiImportCurrentProvider,
+                token: provider.token,
+                url: provider.url,
+                category_id: apiImportCategoryToImport.id,
+                category_name: newName,
+                original_category_name: apiImportCategoryToImport.name,
+                profit_margin: profitMargin,
+                image: imageData,
+                api_image: apiImportCategoryToImport.image || '',
+                replace_legacy: replaceLegacy
+            };
+            if (selection) body.selection = selection;
+            lastImportParams = Object.assign({}, body, { image: '', replace_legacy: false });
+            await startImportJob(body);
         }
 
         function openApiCategoryInStore(categoryName) {
@@ -19484,6 +20157,8 @@ def process_site_purchase(email, product_name, sub_name, quantity, player_input,
     sub = find_subcategory(product_name, sub_name, client_api_product_id)
     if sub is None:
         return {"status": "error", "message": "هذه الفئة لم تعد موجودة، حدّث الصفحة وحاول مرة ثانية"}
+    if sub.get('api_available') is False:
+        return {"status": "error", "message": "هذه الفئة غير متوفرة حالياً، جرّب لاحقاً"}
 
     ok, msg, quantity, price = sub_total_price(sub, quantity)
     if not ok:
@@ -19881,6 +20556,7 @@ NO_POST_LOCK_PATHS = frozenset({
     "/api/login", "/api/admin_login", "/api/purchase",
     "/api/verify_product_id", "/api/get_provider_profile",
     "/api/get_provider_products", "/api/fetch_api_categories",
+    "/api/api_tree_preview", "/api/api_tree_children", "/api/api_sync_now",
 })
 
 
@@ -20017,6 +20693,11 @@ ADMIN_PATH_PERMS = {
     "/api/fetch_api_categories": "api",
     "/api/import_api_category_full": "api",
     "/api/cancel_api_import": "api",
+    "/api/api_tree_preview": "api",
+    "/api/api_tree_children": "api",
+    "/api/api_sync_status": "api",
+    "/api/api_sync_settings": "api",
+    "/api/api_sync_now": "api",
     "/api/edit_imported_section": "products",
     "/api/edit_imported_subsection": "products",
     "/api/ims_set_order": "products",
@@ -20074,6 +20755,8 @@ ADMIN_ACTION_LABELS = {
     "/api/add_provider": "إضافة مزوّد API",
     "/api/import_api_category_full": "سحب قسم من API",
     "/api/cancel_api_import": "إلغاء سحب API",
+    "/api/api_sync_settings": "تغيير إعدادات مزامنة API",
+    "/api/api_sync_now": "تشغيل مزامنة API يدوياً",
     "/api/edit_imported_section": "تعديل قسم مسحوب",
     "/api/edit_imported_subsection": "تعديل قسم فرعي مسحوب",
     "/api/ims_set_order": "ترتيب الأقسام المسحوبة",
@@ -21832,7 +22515,7 @@ self.addEventListener('fetch', event => {
                     "base_price": base_price,
                     "params": (sub.get('api_params') or ["ادخل الايدي"]),
                     "category_name": sub.get('product'),
-                    "available": True,
+                    "available": sub.get('api_available') is not False,
                     "qty_values": None,
                     "product_type": "package",
                     "parent_id": 0,
@@ -21952,6 +22635,9 @@ self.addEventListener('fetch', event => {
                     return
                 
                 sub = SUBCATEGORIES_DATA[sub_idx]
+                if sub.get('api_available') is False:
+                    self.wfile.write(json.dumps({"status": "error", "code": 110, "message": "Product not available now"}).encode("utf-8"))
+                    return
                 base_price = float(sub.get('price', 0))
                 discount = float(udata.get('discount_percentage', 0))
                 
@@ -22133,6 +22819,19 @@ self.addEventListener('fetch', event => {
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
             self.wfile.write(json.dumps(ORDERS_DATA, ensure_ascii=False).encode("utf-8"))
+
+        elif self.path == "/api/api_sync_status":
+            with DATA_LOCK:
+                linked = [s for s in SUBCATEGORIES_DATA if s.get('provider_name') and s.get('api_product_id')]
+                unavailable = [s.get('name') for s in linked if s.get('api_available') is False]
+            self._send_json_fast({
+                "settings": dict(API_SYNC_SETTINGS),
+                "status": dict(API_SYNC_STATUS),
+                "linked_count": len(linked),
+                "unavailable_count": len(unavailable),
+                "unavailable_sample": unavailable[:8],
+                "intervals": list(API_SYNC_INTERVALS)
+            })
 
         elif self.path == "/api/imported_sections":
             self.send_response(200)
@@ -23063,6 +23762,76 @@ self.addEventListener('fetch', event => {
                 self.end_headers()
                 self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode("utf-8"))
 
+        elif self.path in ("/api/api_tree_preview", "/api/api_tree_children"):
+            # معاينة شجرة المزود قبل السحب (للاختيار). نستخدم بيانات المزود المحفوظة، مو اللي يرسلها المتصفح.
+            res_obj = {"status": "error", "message": "طلب غير صحيح"}
+            try:
+                prov = next((p for p in PROVIDERS_DATA if p.get('name') == data.get('provider_name')), None)
+                if not prov:
+                    raise Exception("المزود غير موجود")
+                base = (prov.get('url') or '').rstrip('/') + '/'
+                tok = prov.get('token')
+                node_id = data.get('category_id') if self.path == "/api/api_tree_preview" else data.get('node_id')
+                if node_id in (None, ''):
+                    raise Exception("رقم القسم ناقص")
+                content = None
+                last_err = None
+                for _try in range(2):
+                    try:
+                        content = make_api_request(f"{base}client/api/content/{urllib.parse.quote(str(node_id), safe='')}", tok, timeout=25)
+                        break
+                    except Exception as e:
+                        last_err = e
+                        time.sleep(0.8)
+                if content is None:
+                    raise Exception(f"تعذر قراءة القسم من المزود: {last_err}")
+                cats, prods = _extract_content_lists(content)
+                items = []
+                for c in cats:
+                    cid, cname = c.get('id'), _node_name(c)
+                    if cid is None or not cname:
+                        continue
+                    items.append({"id": str(cid), "name": cname, "image": _node_image(base, c)})
+                if self.path == "/api/api_tree_preview":
+                    key = f"{data.get('provider_name')}_{(data.get('original_category_name') or '').strip()}"
+                    with DATA_LOCK:
+                        done_ids = {str(p.get('api_node_id')) for p in PRODUCTS_DATA if p.get('api_import_key') == key}
+                    for it in items:
+                        it["imported"] = it["id"] in done_ids
+                    res_obj = {"status": "success", "subsections": items, "root_leaves": len(prods)}
+                else:
+                    res_obj = {"status": "success", "children": items, "leaf_count": len(prods)}
+            except Exception as e:
+                logging.error(f"خطأ في معاينة شجرة API: {e}")
+                res_obj = {"status": "error", "message": str(e)}
+            self._send_json_fast(res_obj)
+
+        elif self.path == "/api/api_sync_settings":
+            try:
+                new = dict(API_SYNC_SETTINGS)
+                if 'enabled' in data:
+                    new['enabled'] = bool(data.get('enabled'))
+                if 'sync_availability' in data:
+                    new['sync_availability'] = bool(data.get('sync_availability'))
+                if 'interval_min' in data:
+                    iv = int(data.get('interval_min'))
+                    if iv not in API_SYNC_INTERVALS:
+                        raise Exception("المدة لازم تكون وحدة من: " + "، ".join(str(x) for x in API_SYNC_INTERVALS) + " دقيقة")
+                    new['interval_min'] = iv
+                API_SYNC_SETTINGS.update(new)
+                save_json_file(API_SYNC_FILE, dict(API_SYNC_SETTINGS))
+                api_price_monitor.wake.set()   # يطبّق المدة الجديدة فوراً
+                self._send_json_fast({"status": "success", "settings": dict(API_SYNC_SETTINGS)})
+            except Exception as e:
+                self._send_json_fast({"status": "error", "message": str(e)})
+
+        elif self.path == "/api/api_sync_now":
+            if API_SYNC_STATUS.get("running"):
+                self._send_json_fast({"status": "running"})
+            else:
+                threading.Thread(target=api_price_monitor.run_once, daemon=True).start()
+                self._send_json_fast({"status": "started"})
+
         elif self.path == "/api/import_api_category_full":
             try:
                 provider_name = data.get('provider_name')
@@ -23078,13 +23847,28 @@ self.addEventListener('fetch', event => {
 
                 if not provider_name or not url or category_id in (None, '') or not category_name:
                     raise Exception("بيانات الاستيراد ناقصة")
+                if not (0 <= profit_margin <= 1000) or profit_margin != profit_margin:
+                    raise Exception("نسبة الربح لازم تكون رقم بين 0 و 1000")
+                if len(category_name) > 100:
+                    raise Exception("اسم القسم طويل (الحد الأقصى 100 حرف)")
+                _sel_raw = data.get('selection') or {}
+                selection = None
+                if isinstance(_sel_raw, dict) and (_sel_raw.get('include_l1') is not None or _sel_raw.get('include_l2')):
+                    selection = {
+                        "include_l1": [str(x) for x in _sel_raw.get('include_l1')] if isinstance(_sel_raw.get('include_l1'), list) else None,
+                        "include_l2": {str(k): [str(x) for x in v] for k, v in (_sel_raw.get('include_l2') or {}).items()
+                                       if isinstance(v, list)} if isinstance(_sel_raw.get('include_l2'), dict) else {},
+                        "include_root_leaves": bool(_sel_raw.get('include_root_leaves', True)),
+                    }
+                    if selection["include_l1"] is not None and not selection["include_l1"] and not selection["include_root_leaves"]:
+                        raise Exception("ما اخترت أي قسم للسحب")
 
                 if not url.endswith('/'):
                     url += '/'
 
                 job, already_running = start_api_tree_import(
                     provider_name, token, url, category_id, category_name,
-                    original_name, profit_margin, image, api_image, replace_legacy
+                    original_name, profit_margin, image, api_image, replace_legacy, selection=selection
                 )
 
                 self.send_response(200)
