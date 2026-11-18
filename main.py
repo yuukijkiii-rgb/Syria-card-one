@@ -3359,18 +3359,29 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             display: flex; align-items: center; justify-content: center; color: #ffffff; 
         }
         .shield-icon svg { width: 100%; height: 100%; }
-        .add-balance-btn {
-            background-color: #ffffff; color: #00897b; border-radius: 50%;
-            width: calc(var(--top-header-height) * 0.4); 
-            height: calc(var(--top-header-height) * 0.4); 
-            max-width: 26px; max-height: 26px;
-            min-width: 18px; min-height: 18px;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 900; font-size: calc(var(--top-header-height) * 0.22 + 2px); 
-            cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-            border: none; text-decoration: none; transition: transform 0.1s ease;
+        .wallet-pill {
+            display: flex; align-items: center; gap: 8px;
+            padding: 3px 4px 3px 12px; border-radius: 999px;
+            background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.28);
+            -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 4px 12px -6px rgba(0,0,0,0.5);
         }
+        .add-balance-btn {
+            background: linear-gradient(135deg, #fde68a, #f59e0b); color: #3b2a00; border-radius: 50%;
+            width: calc(var(--top-header-height) * 0.4);
+            height: calc(var(--top-header-height) * 0.4);
+            max-width: 28px; max-height: 28px;
+            min-width: 22px; min-height: 22px;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; box-shadow: 0 2px 8px rgba(245,158,11,0.55), inset 0 1px 0 rgba(255,255,255,0.6);
+            border: none; text-decoration: none; transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+        .add-balance-btn svg { width: 60%; height: 60%; transition: transform 0.25s ease; }
+        .add-balance-btn:hover svg { transform: rotate(90deg); }
         .add-balance-btn:active { transform: scale(0.9); }
+        .add-balance-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        .wallet-pill .balance-text { font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
+        @media (max-width: 360px) { .wallet-pill { gap: 6px; padding: 2px 3px 2px 8px; } }
         .balance-text { 
             font-size: calc(var(--top-header-height) * 0.2 + 2px); 
             font-weight: 700; color: #ffffff; direction: ltr; white-space: nowrap;
@@ -4689,13 +4700,12 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             <span class="store-name">SYRIA CARD ONE</span>
         </div>
         <div class="header-left">
-            <div class="shield-icon">
-                <svg width="100%" height="100%" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
-                </svg>
+            <div class="wallet-pill">
+                <a href="javascript:void(0);" class="add-balance-btn" onclick="openDepositPage()" title="إضافة رصيد" aria-label="إضافة رصيد">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/></svg>
+                </a>
+                <span class="balance-text" id="userBalance">0.000 $</span>
             </div>
-            <a href="javascript:void(0);" class="add-balance-btn" onclick="openDepositPage()" title="إضافة رصيد">+</a>
-            <span class="balance-text" id="userBalance">0.000 $</span>
             <div class="notif-btn-wrapper">
                 <button class="menu-hamburger" onclick="openNotificationsPage()" style="width:auto;">
                     <svg width="100%" height="100%" viewBox="0 0 24 24" fill="#ffffff" style="width:calc(var(--top-header-height) * 0.32); height:calc(var(--top-header-height) * 0.32); max-width:22px; max-height:22px;">
@@ -9749,6 +9759,53 @@ ADMIN_HTML_CONTENT = """
         </div>
 
         <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+        <!-- شريط الاختصارات السفلي -->
+        <nav class="admin-dock" id="adminDock" aria-label="اختصارات سريعة">
+            <button class="dk-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><defs>
+                    <linearGradient id="dkH1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fbbf24"/><stop offset="1" stop-color="#f97316"/></linearGradient>
+                    <linearGradient id="dkH2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60a5fa"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs>
+                    <path d="M7 15v11a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V15L16 7z" fill="url(#dkH2)"/>
+                    <path d="M3.5 15.5 16 4.5l12.5 11" fill="none" stroke="url(#dkH1)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <rect x="13" y="18" width="6" height="10" rx="1.5" fill="#fff" opacity=".92"/></svg></span>الرئيسية</button>
+            <button class="dk-btn" onclick="qaRun('openAllOrdersScreen')"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><defs>
+                    <linearGradient id="dkO" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#c084fc"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs>
+                    <path d="M8 3h16a1.5 1.5 0 0 1 1.500 1.500V29l-3.200-2.200L19 29l-3-2.200L13 29l-3.200-2.200L6.500 29V4.500A1.500 1.500 0 0 1 8 3z" fill="url(#dkO)"/>
+                    <rect x="10.500" y="9" width="11" height="2.400" rx="1.200" fill="#fff"/>
+                    <rect x="10.500" y="14" width="11" height="2.400" rx="1.200" fill="#fff" opacity=".85"/>
+                    <rect x="10.500" y="19" width="6.500" height="2.400" rx="1.200" fill="#fde047"/></svg><span class="dk-badge" id="dkBadgeOrders"></span></span>الطلبات</button>
+            <button class="dk-btn" onclick="qaRun('openCheckDepositsPage')"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><defs>
+                    <linearGradient id="dkC" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22d3ee"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs>
+                    <rect x="2.500" y="6.500" width="27" height="19" rx="4.500" fill="url(#dkC)"/>
+                    <rect x="2.500" y="11.500" width="27" height="4.500" fill="#0b1220" opacity=".55"/>
+                    <rect x="6.500" y="19.500" width="7.500" height="3.500" rx="1.200" fill="#fde047"/>
+                    <circle cx="23" cy="21.500" r="2.200" fill="#fff" opacity=".9"/></svg><span class="dk-badge" id="dkBadgeDeposits"></span></span>الإيداعات</button>
+            <button class="dk-btn" onclick="qaRun('openBalanceModal','add')"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><defs>
+                    <linearGradient id="dkW" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4ade80"/><stop offset="1" stop-color="#15803d"/></linearGradient></defs>
+                    <rect x="2.500" y="9" width="24" height="18" rx="4.500" fill="url(#dkW)"/>
+                    <path d="M21.500 15h8v7h-8a3.500 3.500 0 0 1 0-7z" fill="#fde047"/>
+                    <circle cx="23.500" cy="18.500" r="1.500" fill="#15803d"/>
+                    <circle cx="24" cy="7" r="5.500" fill="#f43f5e"/>
+                    <path d="M24 4.500v5M21.500 7h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></span>شحن رصيد</button>
+            <button class="dk-btn" onclick="qaRun('openClientsListScreen')"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><defs>
+                    <linearGradient id="dkU" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2dd4bf"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs>
+                    <circle cx="22.500" cy="11.500" r="4.200" fill="#fbbf24"/>
+                    <path d="M18.500 19.300c1-.3 2-.4 3-.4 4.500 0 8 3.200 8 8.100h-7.500" fill="#f59e0b"/>
+                    <circle cx="12" cy="11" r="5.200" fill="url(#dkU)"/>
+                    <path d="M2.500 28c0-5.300 4.200-9 9.500-9s9.500 3.700 9.500 9z" fill="url(#dkU)"/></svg></span>العملاء</button>
+            <button class="dk-btn" onclick="toggleSidebar()"><span class="dk-ico">
+                <svg viewBox="0 0 32 32" aria-hidden="true">
+                    <rect x="3.500" y="3.500" width="11" height="11" rx="3.500" fill="#f87171"/>
+                    <rect x="17.500" y="3.500" width="11" height="11" rx="3.500" fill="#facc15"/>
+                    <rect x="3.500" y="17.500" width="11" height="11" rx="3.500" fill="#4ade80"/>
+                    <rect x="17.500" y="17.500" width="11" height="11" rx="3.500" fill="#60a5fa"/></svg></span>القائمة</button>
+        </nav>
+
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div style="font-size:0.95rem; font-weight:700;">خيارات الإدمن</div>
@@ -9871,16 +9928,25 @@ ADMIN_HTML_CONTENT = """
                     <div class="hero-date" id="heroDate"></div>
                 </div>
             </div>
-            <div class="section-title">اختصارات سريعة</div>
-            <div class="quick-actions">
-                <button class="qa-btn" onclick="qaRun('openAllOrdersScreen')"><span class="qa-ico"><svg class="ic"><use href="#i-receipt"/></svg></span>الطلبات</button>
-                <button class="qa-btn" onclick="qaRun('openClientsListScreen')"><span class="qa-ico"><svg class="ic"><use href="#i-users"/></svg></span>العملاء</button>
-                <button class="qa-btn" onclick="qaRun('openCheckDepositsPage')"><span class="qa-ico"><svg class="ic"><use href="#i-credit-card"/></svg></span>الإيداعات</button>
-                <button class="qa-btn" onclick="qaRun('openBalanceModal','add')"><span class="qa-ico"><svg class="ic"><use href="#i-wallet"/></svg></span>شحن رصيد</button>
-                <button class="qa-btn" onclick="qaRun('openAddProductModal')"><span class="qa-ico"><svg class="ic"><use href="#i-package"/></svg></span>منتج جديد</button>
-                <button class="qa-btn" onclick="qaRun('openAnnouncementModal')"><span class="qa-ico"><svg class="ic"><use href="#i-megaphone"/></svg></span>الإذاعة</button>
-                <button class="qa-btn" onclick="qaRun('openMaintenanceModal')"><span class="qa-ico"><svg class="ic"><use href="#i-wrench"/></svg></span>الصيانة</button>
-                <button class="qa-btn" onclick="qaRefresh()"><span class="qa-ico"><svg class="ic"><use href="#i-refresh"/></svg></span>تحديث</button>
+            <div id="dailyStatsBox" style="display:none;">
+                <div class="section-title">اليوم</div>
+                <div class="ds-tiles">
+                    <div class="ds-tile"><span class="ds-lbl">طلبات اليوم</span><b class="ds-val" id="dsOrders" style="color:#60a5fa">0</b><span class="ds-prev" id="dsOrdersPrev"></span></div>
+                    <div class="ds-tile"><span class="ds-lbl">مبيعات اليوم</span><b class="ds-val" id="dsSales" style="color:#e8c26a">$0</b><span class="ds-prev" id="dsSalesPrev"></span></div>
+                    <div class="ds-tile"><span class="ds-lbl">إيداعات مقبولة</span><b class="ds-val" id="dsDeps" style="color:#4ade80">$0</b><span class="ds-prev" id="dsDepsPrev"></span></div>
+                    <div class="ds-tile"><span class="ds-lbl">مستخدمون جدد</span><b class="ds-val" id="dsUsers" style="color:#2dd4bf">0</b><span class="ds-prev" id="dsUsersPrev"></span></div>
+                </div>
+                <div class="ds-chart">
+                    <div class="ds-chart-head">
+                        <b>آخر 7 أيام</b>
+                        <div class="ds-seg" role="tablist">
+                            <button class="on" data-m="orders" onclick="dsSetMetric('orders')">الطلبات</button>
+                            <button data-m="deps" onclick="dsSetMetric('deps')">الإيداعات</button>
+                            <button data-m="users" onclick="dsSetMetric('users')">المستخدمون</button>
+                        </div>
+                    </div>
+                    <svg id="dsSvg" viewBox="0 0 340 176" role="img" aria-label="رسم بياني لآخر 7 أيام"></svg>
+                </div>
             </div>
             <div class="section-title">نظرة عامة</div>
         </div>
@@ -15804,6 +15870,8 @@ ADMIN_HTML_CONTENT = """
         }
 
         function updateCards(stats, pendingOrders) {
+            try { if (window.updateDockBadges) window.updateDockBadges(stats.pending_deposits, pendingOrders); } catch (e) {}
+            try { if (window.loadDailyStats) window.loadDailyStats(); } catch (e) {}
             const container = document.getElementById('dashboardStatsContainer');
             container.innerHTML = '';
 
@@ -19634,11 +19702,185 @@ ADMIN_HTML_CONTENT = """
         .modal-box label { color: var(--muted); font-weight: 600; }
         .save-btn:disabled, .maint-toggle-btn:disabled, .btn-secondary:disabled { opacity: .55; cursor: not-allowed; filter: grayscale(.4); transform: none !important; }
 
+
+        /* ===== الشريط السفلي ===== */
+        #adminMainApp { padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px)); }
+        .admin-dock {
+            position: fixed; left: 50%; transform: translateX(-50%);
+            bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+            width: min(94vw, 520px); z-index: 900;
+            display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px;
+            padding: 8px 6px 6px; border-radius: 24px;
+            background: linear-gradient(135deg, rgba(26,26,40,0.88), rgba(13,13,20,0.92));
+            backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%);
+            border: 1px solid var(--line);
+            box-shadow: 0 22px 44px -14px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+        body.light-mode-admin .admin-dock { background: rgba(255,255,255,0.9); box-shadow: 0 18px 38px -16px rgba(80,60,20,0.4); }
+        .dk-btn {
+            background: none; border: 0; color: var(--muted); cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            padding: 2px 0; font-size: .64rem; font-weight: 700; border-radius: 16px;
+            -webkit-tap-highlight-color: transparent; transition: color .2s, transform .18s;
+        }
+        .dk-ico {
+            width: 44px; height: 44px; border-radius: 15px; display: flex; align-items: center; justify-content: center;
+            background: var(--bg-3); border: 1px solid var(--line-2); transition: transform .22s, border-color .22s, box-shadow .22s;
+        }
+        .dk-ico svg { width: 29px; height: 29px; filter: drop-shadow(0 3px 4px rgba(0,0,0,0.35)); }
+        .dk-btn:hover { color: var(--txt); }
+        .dk-btn:hover .dk-ico { transform: translateY(-3px); border-color: var(--gold); box-shadow: var(--glow); }
+        .dk-btn:active { transform: scale(.92); }
+
+
+        .dk-ico { position: relative; }
+        .dk-badge {
+            position: absolute; top: -6px; right: -4px; display: none; align-items: center; justify-content: center;
+            min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px;
+            background: linear-gradient(135deg, #fb7185, #e11d48); color: #fff;
+            font-size: .64rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums;
+            border: 2px solid var(--bg-1); box-shadow: 0 4px 10px -2px rgba(225,29,72,0.7);
+        }
+        .dk-badge.on { display: flex; }
+        .dk-badge.pop { animation: dkPop .5s ease; }
+        @keyframes dkPop { 0% { transform: scale(.4); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+
+
+        /* ===== تشييك الطلبات والإيداعات: شاشة كاملة مستقلة بدل ما تطلع تحت الإحصائيات ===== */
+        #checkOrdersPage, #checkDepositsPage {
+            position: fixed !important; inset: 0; width: 100% !important; height: 100vh; height: 100dvh;
+            z-index: 1500; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+            padding: 0 16px calc(40px + env(safe-area-inset-bottom, 0px)) !important;
+            background: radial-gradient(900px 500px at 90% -10%, rgba(232,194,106,0.10), transparent 60%), var(--bg-0);
+        }
+        #checkOrdersPage > *, #checkDepositsPage > * { width: 100%; max-width: 900px; margin-left: auto; margin-right: auto; }
+        #checkOrdersPage .ck-head, #checkDepositsPage .ck-head {
+            position: sticky; top: 0; z-index: 3; background: var(--bg-0);
+            padding: calc(14px + env(safe-area-inset-top, 0px)) 0 10px;
+        }
+
+
+        /* ===== إحصائيات اليوم + رسم آخر 7 أيام ===== */
+        #dailyStatsBox { max-width: 1100px; margin: 0 auto 6px; }
+        .ds-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 12px; }
+        @media (min-width: 700px) { .ds-tiles { grid-template-columns: repeat(4, 1fr); } }
+        .ds-tile { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .ds-lbl { font-size: .74rem; color: var(--muted); font-weight: 600; }
+        .ds-val { font-size: 1.45rem; font-weight: 800; direction: ltr; text-align: right; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+        .ds-prev { font-size: .68rem; color: var(--muted); }
+        .ds-chart { background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 16px; padding: 12px 12px 6px; }
+        .ds-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+        .ds-chart-head > b { font-size: .88rem; color: var(--txt); }
+        .ds-seg { display: flex; background: var(--bg-0); border: 1px solid var(--line-2); border-radius: 10px; padding: 2px; gap: 2px; }
+        .ds-seg button { background: transparent; border: 0; color: var(--muted); font-size: .72rem; font-weight: 700; padding: 5px 9px; border-radius: 8px; cursor: pointer; transition: background .2s, color .2s; }
+        .ds-seg button.on { background: linear-gradient(135deg, var(--gold-2), var(--gold-3)); color: #1a1405; }
+        #dsSvg { width: 100%; height: auto; display: block; direction: ltr; }
+        #dsSvg .ds-axis { stroke: var(--line-2); stroke-width: 1; }
+        #dsSvg .ds-bar { fill: rgba(232,194,106,0.38); }
+        #dsSvg .ds-bar.today { fill: url(#dsGrad); }
+        #dsSvg .ds-num { fill: var(--txt); font-size: 11px; font-weight: 800; text-anchor: middle; }
+        #dsSvg .ds-num.zero { fill: var(--muted); font-weight: 600; }
+        #dsSvg .ds-day { fill: var(--muted); font-size: 10.5px; text-anchor: middle; }
+        #dsSvg .ds-day.today { fill: var(--gold); font-weight: 800; }
+
         @media (max-width: 480px) {
             .modal-box { width: 94% !important; padding: 18px 16px !important; }
             .admin-header { padding: 8px 10px !important; }
         }
     </style>
+<script>
+/* عدّادات الشريط السفلي: طلبات وإيداعات معلّقة */
+window.updateDockBadges = function (deposits, orders) {
+    function set(id, n) {
+        var el = document.getElementById(id); if (!el) return;
+        n = parseInt(n, 10) || 0;
+        var prev = parseInt(el.getAttribute('data-n') || '0', 10);
+        el.setAttribute('data-n', n);
+        if (n > 0) {
+            el.textContent = n > 99 ? '99+' : String(n);
+            el.classList.add('on');
+            if (n > prev) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+        } else {
+            el.classList.remove('on', 'pop');
+        }
+    }
+    set('dkBadgeOrders', orders);
+    set('dkBadgeDeposits', deposits);
+};
+</script>
+<script>
+/* إحصائيات اليوم + رسم آخر 7 أيام */
+(function () {
+    var DATA = null, METRIC = 'orders';
+    function $(id) { return document.getElementById(id); }
+    function money(n) {
+        n = Number(n) || 0;
+        return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+    }
+    function short(n, isMoney) {
+        n = Number(n) || 0;
+        var t = n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(Math.round(n * 100) / 100);
+        return isMoney ? '$' + t : t;
+    }
+    function prev(el, cur, old, isMoney) {
+        if (!el) return;
+        el.textContent = 'أمس: ' + (isMoney ? money(old) : String(old));
+    }
+    function render() {
+        if (!DATA || !DATA.days || !DATA.days.length) return;
+        var days = DATA.days, t = days[days.length - 1], y = days.length > 1 ? days[days.length - 2] : null;
+        if ($('dsOrders')) $('dsOrders').textContent = t.orders;
+        if ($('dsSales')) $('dsSales').textContent = money(t.sales);
+        if ($('dsDeps')) $('dsDeps').textContent = money(t.deposit_amount);
+        if ($('dsUsers')) $('dsUsers').textContent = t.new_users;
+        if (y) {
+            prev($('dsOrdersPrev'), t.orders, y.orders, false);
+            prev($('dsSalesPrev'), t.sales, y.sales, true);
+            prev($('dsDepsPrev'), t.deposit_amount, y.deposit_amount, true);
+            prev($('dsUsersPrev'), t.new_users, y.new_users, false);
+        }
+        drawChart();
+    }
+    function drawChart() {
+        var svg = $('dsSvg'); if (!svg || !DATA) return;
+        var days = DATA.days, isMoney = METRIC === 'deps';
+        var vals = days.map(function (d) { return METRIC === 'orders' ? d.orders : METRIC === 'deps' ? d.deposit_amount : d.new_users; });
+        var max = Math.max.apply(null, vals.concat([1]));
+        var W = 340, padX = 8, slot = (W - padX * 2) / days.length, bw = Math.min(28, slot * 0.58);
+        var base = 132, maxH = 96, out = '';
+        out += '<defs><linearGradient id="dsGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6e0a0"/><stop offset="1" stop-color="#b8893a"/></linearGradient></defs>';
+        out += '<line class="ds-axis" x1="' + padX + '" x2="' + (W - padX) + '" y1="' + base + '" y2="' + base + '"/>';
+        for (var i = 0; i < days.length; i++) {
+            var isToday = i === days.length - 1;
+            var cx = W - padX - slot * (i + 0.5);   // الأقدم يمين واليوم يسار (اتجاه القراءة بالعربي)
+            var h = vals[i] > 0 ? Math.max(4, (vals[i] / max) * maxH) : 2;
+            var dt = new Date(days[i].date + 'T00:00:00');
+            var wd = ''; try { wd = dt.toLocaleDateString('ar', { weekday: 'short' }); } catch (e) {}
+            out += '<rect class="ds-bar' + (isToday ? ' today' : '') + '" x="' + (cx - bw / 2).toFixed(1) + '" y="' + (base - h).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="6"/>';
+            out += '<text class="ds-num' + (vals[i] > 0 ? '' : ' zero') + '" x="' + cx.toFixed(1) + '" y="' + (base - h - 6).toFixed(1) + '">' + short(vals[i], isMoney) + '</text>';
+            out += '<text class="ds-day' + (isToday ? ' today' : '') + '" x="' + cx.toFixed(1) + '" y="152">' + (isToday ? 'اليوم' : wd) + '</text>';
+            out += '<text class="ds-day' + (isToday ? ' today' : '') + '" x="' + cx.toFixed(1) + '" y="167">' + dt.getDate() + '</text>';
+        }
+        svg.innerHTML = out;
+    }
+    window.dsSetMetric = function (m) {
+        METRIC = m;
+        var btns = document.querySelectorAll('.ds-seg button');
+        for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].getAttribute('data-m') === m);
+        drawChart();
+    };
+    window.loadDailyStats = async function () {
+        var box = $('dailyStatsBox'); if (!box) return;
+        try {
+            var r = await fetch('/api/admin_daily_stats');
+            if (!r.ok) { box.style.display = 'none'; return; }
+            DATA = await r.json();
+            box.style.display = '';
+            render();
+        } catch (e) { /* نترك آخر قيمة معروضة */ }
+    };
+})();
+</script>
 </body>
 </html>
 """
@@ -22288,6 +22530,46 @@ ADMIN_PERM_CATALOG = [
 ]
 ADMIN_PERM_KEYS = [p[0] for p in ADMIN_PERM_CATALOG]
 ADMIN_SESSION_TTL = 12 * 3600
+def build_admin_daily_stats():
+    """إحصائيات آخر 7 أيام (بتوقيت السيرفر، نفس توقيت تواريخ الطلبات المخزّنة)."""
+    now = datetime.now()
+    keys = [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(6, -1, -1)]
+    days = {k: {"date": k, "orders": 0, "sales": 0.0, "deposits": 0, "deposit_amount": 0.0, "new_users": 0} for k in keys}
+
+    def _f(v):
+        try:
+            return float(v)
+        except Exception:
+            return 0.0
+
+    with DATA_LOCK:
+        orders = list(ORDERS_DATA)
+        deps = list(DEPOSIT_REQUESTS_DATA)
+        users = list(USERS_DATA.values())
+    for o in orders:
+        d = days.get(str(o.get("date") or "")[:10])
+        if d is not None:
+            d["orders"] += 1
+            if o.get("status") != "مرفوضة":
+                d["sales"] += _f(o.get("price"))
+    for r in deps:
+        d = days.get(str(r.get("date") or "")[:10])
+        if d is not None and r.get("status") == "مقبول":
+            d["deposits"] += 1
+            d["deposit_amount"] += _f(r.get("amount"))
+    for u in users:
+        d = days.get(str((u or {}).get("join_date") or "")[:10])
+        if d is not None:
+            d["new_users"] += 1
+    out = []
+    for k in keys:
+        v = days[k]
+        v["sales"] = round(v["sales"], 2)
+        v["deposit_amount"] = round(v["deposit_amount"], 2)
+        out.append(v)
+    return {"days": out, "today": out[-1]}
+
+
 ADMIN_LOG_MAX = 400
 ADMIN_SESSIONS = {}
 _ADMIN_SESS_LOCK = threading.Lock()
@@ -22297,6 +22579,7 @@ _ADMIN_FAILS = {}
 ADMIN_PATH_PERMS = {
     # GET
     "/api/admin_stats": "stats",
+    "/api/admin_daily_stats": "stats",
     "/api/inventory_report": "products",
     "/api/api_clients_inventory": "api",
     "/api/get_deposit_requests": "deposits",
@@ -24082,6 +24365,9 @@ self.addEventListener('fetch', event => {
                 "total_balance": round(total_balance, 10),
                 "pending_deposits": pending_deposits
             }, ensure_ascii=False).encode("utf-8"))
+
+        elif self.path == "/api/admin_daily_stats":
+            self._reply_json(build_admin_daily_stats())
 
         elif self.path == "/api/google_config":
             _gid = get_google_client_id()
