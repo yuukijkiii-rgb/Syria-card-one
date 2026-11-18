@@ -9762,14 +9762,18 @@ ADMIN_HTML_CONTENT = """
                 <span><svg class="ic"><use href="#i-chevron"/></svg></span>
             </button>
             <div class="sub-menu" id="settingsMenu">
+                <div class="sub-menu-group">المحتوى والتواصل</div>
                 <button class="sub-menu-btn" onclick="openAboutUsSettingsModal()">تعيين من نحن</button>
                 <button class="sub-menu-btn" onclick="openSupportSettingsModal()">تعيين التواصل مع دعم</button>
+                <div class="sub-menu-group">الربط والإشعارات</div>
                 <button class="sub-menu-btn" onclick="openGoogleSettingsModal()" style="color:#60a5fa; border-color:#60a5fa; font-weight:800;">ربط تسجيل جوجل</button>
-                <button class="sub-menu-btn" onclick="openAppearanceSettings()" style="color:#4ade80; border-color:#4ade80;">المظهر وضبط</button>
-                <button class="sub-menu-btn" onclick="openTickerSettingsModal()" style="color:#38bdf8; border-color:#38bdf8;">إعداد الشريط العلوي</button>
-                <button class="sub-menu-btn" onclick="openMaintenanceModal()" style="color:#f87171; border-color:#f87171; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> وضع الصيانة</button>
                 <button class="sub-menu-btn" onclick="openTgNotifyScreen()" style="color:#38bdf8; border-color:#38bdf8; font-weight:800;"><svg class="ic"><use href="#i-send"/></svg> تعيين الاشعارات</button>
                 <button class="sub-menu-btn" onclick="tgNotifyTestFromMenu()" style="color:#a78bfa; border-color:#a78bfa; font-weight:800;"><svg class="ic"><use href="#i-activity"/></svg> ارسال رسالة تجريب للبوتات</button>
+                <div class="sub-menu-group">المظهر والعرض</div>
+                <button class="sub-menu-btn" onclick="openAppearanceSettings()" style="color:#4ade80; border-color:#4ade80;">المظهر وضبط</button>
+                <button class="sub-menu-btn" onclick="openTickerSettingsModal()" style="color:#38bdf8; border-color:#38bdf8;">إعداد الشريط العلوي</button>
+                <div class="sub-menu-group">النظام والبيانات</div>
+                <button class="sub-menu-btn" onclick="openMaintenanceModal()" style="color:#f87171; border-color:#f87171; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> وضع الصيانة</button>
                 <button class="sub-menu-btn" onclick="openRestoreDbModal()" style="color:#fb923c; border-color:#fb923c; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> رفع قاعدة بيانات</button>
             </div>
 
@@ -18456,6 +18460,8 @@ ADMIN_HTML_CONTENT = """
                     subs[j].style.display = ok ? '' : 'none';
                     if (ok) hits++;
                 }
+                var grps = menu.querySelectorAll('.sub-menu-group');
+                for (var g = 0; g < grps.length; g++) grps[g].style.display = q ? 'none' : '';
                 headers[i].style.display = (!q || hits > 0) ? '' : 'none';
                 menu.style.display = q ? (hits > 0 ? 'flex' : 'none') : 'none';
             }
@@ -19602,6 +19608,37 @@ ADMIN_HTML_CONTENT = """
     };
 })();
 </script>
+
+    <style id="adminPolishV3">
+        /* ===== تحسينات إضافية: تركيز لوحة المفاتيح، مجموعات القائمة، حقول، رفع ملفات ===== */
+        :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+        input:focus, select:focus, textarea:focus { border-color: var(--gold) !important; box-shadow: 0 0 0 3px rgba(232,194,106,0.16) !important; }
+        input::placeholder, textarea::placeholder { color: var(--muted); opacity: .7; }
+
+        .sub-menu-group { font-size: .72rem; font-weight: 700; color: var(--muted); margin: 10px 2px 0; padding-bottom: 5px; border-bottom: 1px solid var(--line-2); }
+        .sub-menu-group:first-child { margin-top: 2px; }
+
+        .sub-menu-btn { display: flex; align-items: center; gap: 8px; border-radius: 10px !important; padding: 11px 12px !important; }
+        .sub-menu-btn[style*="color"] { box-shadow: inset -3px 0 0 currentColor; }
+        .sub-menu-btn[style*="color"]:hover { box-shadow: inset -3px 0 0 currentColor, 0 6px 16px -8px rgba(0,0,0,.7) !important; }
+        .sub-menu-btn[onclick*="openRestoreDbModal"] { border-style: dashed !important; }
+
+        input[type="file"] { padding: 8px !important; cursor: pointer; }
+        input[type="file"]::file-selector-button {
+            margin-left: 10px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 8px;
+            background: var(--bg-3); color: var(--gold); font-weight: 700; cursor: pointer; transition: all .2s;
+        }
+        input[type="file"]::file-selector-button:hover { background: var(--gold); color: #0b0b10; border-color: var(--gold); }
+
+        .modal-box { scrollbar-width: thin; scrollbar-color: var(--gold-3) transparent; }
+        .modal-box label { color: var(--muted); font-weight: 600; }
+        .save-btn:disabled, .maint-toggle-btn:disabled, .btn-secondary:disabled { opacity: .55; cursor: not-allowed; filter: grayscale(.4); transform: none !important; }
+
+        @media (max-width: 480px) {
+            .modal-box { width: 94% !important; padding: 18px 16px !important; }
+            .admin-header { padding: 8px 10px !important; }
+        }
+    </style>
 </body>
 </html>
 """
