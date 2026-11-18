@@ -3615,6 +3615,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         .search-input:focus { border-color: var(--accent-color); }
 
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 12px; padding: 10px 5px; }
+        .empty-state { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 20px; color: var(--subtext-color); text-align: center; }
+        .empty-state svg { width: 84px; height: 84px; opacity: .9; }
+        .empty-state span { font-size: 0.92rem; font-weight: 700; }
         .item-card.sub-unavailable { opacity: 0.5; filter: grayscale(1); position: relative; }
         .group-item-card.sub-unavailable { opacity: 0.5; filter: grayscale(1); position: relative; }
         .group-item-card.sub-unavailable::after { content: "غير متوفر"; position: absolute; top: 8px; left: 8px; background: #dc2626; color: #fff; font-size: 0.62rem; font-weight: 800; padding: 3px 8px; border-radius: 10px; z-index: 5; }
@@ -3670,6 +3673,9 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
         .cur-opt:active { background: rgba(16,185,129,0.2); }
         .cur-opt.selected { background: rgba(16,185,129,0.24); border-color: rgba(16,185,129,0.55); font-weight: 800; }
+        .sidebar .cur-wrap { flex-direction: column; align-items: center; margin: 12px 0 0; width: 100%; }
+        .sidebar .cur-panel { position: static; width: 100%; margin-top: 8px; box-shadow: none; }
+        .sidebar .cur-list { max-height: 50vh; }
         body.light-mode .cur-pill { background: #fff7a8; border-color: #fde68a; color: #a16207; box-shadow: 0 3px 10px rgba(234,179,8,0.25); }
         body.light-mode .cur-panel { background: #ffffff; border-color: #e5e7eb; box-shadow: 0 12px 30px rgba(0,0,0,0.12); }
         body.light-mode .cur-opt { background: #ecfdf5; border-color: #bbf7d0; color: #065f46; }
@@ -4792,6 +4798,15 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     <span class="user-info-val" id="sbUserId" style="color:var(--accent-color);">#1000</span>
                 </div>
             </div>
+            <div class="cur-wrap" id="curWrap">
+                <button type="button" class="cur-pill" id="currencySelectorBox" onclick="toggleCurrencyDropdown(event)" aria-haspopup="listbox" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span>العملة <span id="currentCurrencyLabel" dir="auto">USD</span></span>
+                </button>
+                <div class="cur-panel" id="currencyDropdown" role="listbox">
+                    <div id="currencyOptionsList" class="cur-list"></div>
+                </div>
+            </div>
         </div>
 
         <div class="sidebar-menu-list" id="sidebarMenuList">
@@ -4967,15 +4982,6 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
     <div class="main-content-wrapper">
         <div id="shopMainSection">
-            <div class="cur-wrap" id="curWrap">
-                <button type="button" class="cur-pill" id="currencySelectorBox" onclick="toggleCurrencyDropdown(event)" aria-haspopup="listbox" aria-expanded="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    <span>العملة <span id="currentCurrencyLabel" dir="auto">USD</span></span>
-                </button>
-                <div class="cur-panel" id="currencyDropdown" role="listbox">
-                    <div id="currencyOptionsList" class="cur-list"></div>
-                </div>
-            </div>
             <div class="section-header">
                 <div class="search-container" id="searchContainer">
                     <input type="text" id="searchInput" class="search-input" placeholder="ابحث هنا..." oninput="handleSearch()">
@@ -7080,6 +7086,11 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        const EMPTY_BOX_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 28 32 38 54 28 32 18z"/><path d="M10 28v20l22 10V38"/><path d="M54 28v20L32 58"/><path d="M10 28 5 17l22-9 5 10"/><path d="M54 28l5-11L37 8l-5 10"/></svg>';
+        function emptyStateHTML(filterQuery) {
+            return '<div class="empty-state">' + EMPTY_BOX_SVG + '<span>' + (filterQuery ? 'لا توجد نتائج مطابقة' : 'غير متوفر') + '</span></div>';
+        }
+
         function renderCategories(filterQuery = '') {
             currentLevel = 'categories';
             currentGroupId = null;
@@ -7099,7 +7110,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             );
 
             if (entries.length === 0) {
-                grid.innerHTML = `<div style="grid-column: 1 / -1; text-align:center; padding:20px; color:var(--text-color); font-size:0.8rem;">لا توجد أقسام مطابقة</div>`;
+                grid.innerHTML = emptyStateHTML(filterQuery);
                 return;
             }
 
@@ -7146,7 +7157,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 );
 
                 if (filteredProducts.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align:center; padding:20px; color:var(--text-color); font-size:0.8rem;">لا توجد منتجات مطابقة</div>`;
+                    grid.innerHTML = emptyStateHTML(filterQuery);
                     return;
                 }
 
@@ -7194,7 +7205,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 );
 
                 if (filteredGroups.length === 0 && directSubcats.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align:center; padding:20px; color:var(--text-color); font-size:0.8rem;">لا توجد فئات لهذه الخدمة بعد</div>`;
+                    grid.innerHTML = emptyStateHTML(filterQuery);
                     return;
                 }
 
@@ -7261,7 +7272,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 );
 
                 if (groupSubcats.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1 / -1; text-align:center; padding:20px; color:var(--text-color); font-size:0.8rem;">لا توجد فئات في هذه المجموعة</div>`;
+                    grid.innerHTML = emptyStateHTML(filterQuery);
                     return;
                 }
 
