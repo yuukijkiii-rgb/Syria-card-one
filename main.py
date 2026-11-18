@@ -15,6 +15,10 @@ import time
 import re
 import html as html_lib
 import struct
+import sqlite3
+import atexit
+import tempfile
+import shutil
 
 # Web Push (إشعارات النظام) تحتاج مكتبة cryptography. إذا ما كانت موجودة يشتغل الباقي عادي بدونها.
 try:
@@ -490,32 +494,583 @@ DEFAULT_TICKER = {
 }
 
 
-def load_json_file(file_path, default_data):
-    if os.path.exists(file_path):
+# --------------------------------------------------
+# طبقة التخزين: SQLite (بدل ملفات JSON)
+# - نفس الدالتين القديمتين load_json_file / save_json_file فباقي الكود ما بيتغير
+# - كل عنصر (طلب / مستخدم / منتج ...) بيتخزّن بسطر لحاله، والحفظ بيكتب فقط السطور اللي تغيّرت
+#   (مو الملف كامل متل أول) فما يعلق الموقع ولو كبرت البيانات
+# - وضع WAL: القراءة والكتابة ما بيعلقوا ببعض + حماية من تخريب الملف إذا انقطع السيرفر
+# - نقل تلقائي لملفات JSON القديمة أول تشغيل (بتنحفظ نسختها بمجلد json_backup_before_sqlite)
+# - نسخة احتياطية تلقائية يومية بمجلد db_backups (بتحتفظ بآخر 7 نسخ)
+# - للتخزين الدائم (مثلاً Disk على Render) حطّ متغير البيئة DB_PATH على مسار القرص الدائم
+# --------------------------------------------------
+DB_PATH = os.environ.get("DB_PATH") or "store.db"
+JSON_BACKUP_DIR = os.environ.get("JSON_BACKUP_DIR") or "json_backup_before_sqlite"
+DB_BACKUP_DIR = os.environ.get("DB_BACKUP_DIR") or "db_backups"
+DB_BACKUP_KEEP = 7
+
+_DB_LOCK = threading.RLock()
+_DB_CONN = None
+_DB_FROZEN = False   # بيصير True بعد استعادة قاعدة بيانات (لحد ما يعيد السيرفر تشغيل نفسه) حتى ما تنكتب بيانات الذاكرة القديمة فوق المستعادة
+_DB_CACHE = {}   # اسم المجموعة -> {"kind": ..., "rows": {مفتاح: (ترتيب, بصمة)}}
+
+_DB_SCHEMA = """
+CREATE TABLE IF NOT EXISTS colls (
+    name TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    updated REAL
+);
+CREATE TABLE IF NOT EXISTS rows (
+    coll TEXT NOT NULL,
+    k    TEXT NOT NULL,
+    pos  INTEGER NOT NULL,
+    v    TEXT NOT NULL,
+    PRIMARY KEY (coll, k)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_rows_coll_pos ON rows(coll, pos);
+"""
+
+
+def _jd(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _digest(text):
+    return hashlib.md5(text.encode("utf-8")).digest()
+
+
+def _coll_name(file_path):
+    return os.path.basename(str(file_path))
+
+
+def _db():
+    """اتصال واحد مشترك (محمي بقفل) - الكتابة أصلاً بتتسلسل فما في داعي لاتصال لكل خيط."""
+    global _DB_CONN
+    if _DB_CONN is None:
+        folder = os.path.dirname(os.path.abspath(DB_PATH))
+        os.makedirs(folder, exist_ok=True)
+        conn = sqlite3.connect(DB_PATH, timeout=30, check_same_thread=False, isolation_level=None)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA temp_store=MEMORY")
+        conn.execute("PRAGMA cache_size=-16000")
+        conn.executescript(_DB_SCHEMA)
+        _DB_CONN = conn
+    return _DB_CONN
+
+
+def _db_snapshot(data):
+    """يحوّل البيانات لقائمة (مفتاح، ترتيب، نص JSON). بيعيد المحاولة إذا خيط ثاني عدّل البيانات أثناء القراءة."""
+    last_err = None
+    for _ in range(8):
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            if isinstance(data, list):
+                return "list", [(str(i), i, _jd(v)) for i, v in enumerate(list(data))]
+            if isinstance(data, dict):
+                return "dict", [(str(k), i, _jd(v)) for i, (k, v) in enumerate(list(data.items()))]
+            return "scalar", [("", 0, _jd(data))]
+        except RuntimeError as e:   # dictionary changed size during iteration
+            last_err = e
+            time.sleep(0.01)
+    raise last_err
+
+
+# --------------------------------------------------
+# مراقب تغييرات قاعدة البيانات -> إشعار تليجرام + إرسال ملف القاعدة
+# أي تغيير (حتى بسيط) بأي مجموعة بيانات بيوصلك رسالة فيها شو تغيّر + نسخة من ملف store.db
+# - التوكن والشات بيتغيّروا من متغيرات البيئة DBWATCH_BOT_TOKEN و DBWATCH_CHAT_ID
+# - DBWATCH_ENABLED=0 لإيقافه | DBWATCH_DEBOUNCE ثواني تجميع التغييرات المتقاربة (افتراضي 5)
+# - DBWATCH_IGNORE أسماء ملفات تتجاهلها مفصولة بفاصلة (مثلاً api_price_tracking.json)
+# --------------------------------------------------
+DBWATCH_BOT_TOKEN = os.environ.get("DBWATCH_BOT_TOKEN", "9108941304:AAH6ycOZaYbOH5X5Og8mj7JdCRowEnBis-k")
+DBWATCH_CHAT_ID = os.environ.get("DBWATCH_CHAT_ID", "8980535537")
+DBWATCH_ENABLED = os.environ.get("DBWATCH_ENABLED", "1") != "0"
+DBWATCH_DEBOUNCE = float(os.environ.get("DBWATCH_DEBOUNCE", "5"))
+DBWATCH_MAX_WAIT = float(os.environ.get("DBWATCH_MAX_WAIT", "30"))
+DBWATCH_IGNORE = set(x.strip() for x in os.environ.get("DBWATCH_IGNORE", "").split(",") if x.strip())
+DBWATCH_MAX_FILE = 49 * 1024 * 1024   # حد تليجرام لرفع الملفات 50MB
+
+_DBWATCH_LOCK = threading.Lock()
+_DBWATCH_PENDING = []          # [(وقت, اسم المجموعة, [إضافات], [تعديلات], [حذف])]
+_DBWATCH_EVENT = threading.Event()
+_DBWATCH_READY = False         # بيصير True بعد ما يشتغل السيرفر (حتى ما يرسل أثناء الترحيل/التحميل الأول)
+_DBWATCH_TITLES = {
+    CATEGORIES_FILE: "الأقسام", USERS_FILE: "المستخدمين", BANNERS_FILE: "البنرات", SPLASH_FILE: "شاشة البداية",
+    PRODUCTS_FILE: "المنتجات", SUBCATEGORIES_FILE: "الفئات", ORDERS_FILE: "الطلبات",
+    DEPOSIT_METHODS_FILE: "طرق الإيداع", DEPOSIT_REQUESTS_FILE: "طلبات الإيداع", PROVIDERS_FILE: "المزودين",
+    CATEGORY_BANNERS_FILE: "بنرات الأقسام", SETTINGS_FILE: "إعدادات الموقع", APPEARANCE_FILE: "المظهر",
+    NOTIFICATIONS_FILE: "إشعارات المستخدمين", CURRENCIES_FILE: "العملات", API_IMPORTS_FILE: "استيراد API",
+    API_PRICE_TRACKING_FILE: "تتبع أسعار API", MAINTENANCE_FILE: "وضع الصيانة",
+    SUBCATEGORY_GROUPS_FILE: "مجموعات الفئات", TICKER_FILE: "الشريط المتحرك", ANNOUNCEMENT_FILE: "الإعلان",
+    PUSH_SUBS_FILE: "اشتراكات الإشعارات", SUBADMINS_FILE: "الأدمنية", ADMIN_LOG_FILE: "سجل الأدمنية",
+    BALANCE_ADJ_FILE: "تعديلات الرصيد",
+}
+
+
+def _dbwatch_short(text, n=70):
+    text = str(text)
+    return text if len(text) <= n else text[:n] + "…"
+
+
+def _dbwatch_label(k, v_text):
+    try:
+        v = json.loads(v_text) if v_text is not None else None
+    except Exception:
+        return str(k)
+    if isinstance(v, dict):
+        for f in ("id", "email", "name", "title", "username"):
+            if v.get(f):
+                return "%s (%s=%s)" % (k, f, _dbwatch_short(v[f], 40))
+    return str(k)
+
+
+def _dbwatch_diff(old_text, new_text):
+    """يرجّع وصف قصير لشو تغيّر بين القيمة القديمة والجديدة."""
+    try:
+        old, new = json.loads(old_text), json.loads(new_text)
+    except Exception:
+        return "%s ← %s" % (_dbwatch_short(new_text), _dbwatch_short(old_text))
+    if isinstance(old, dict) and isinstance(new, dict):
+        lines = []
+        for f in list(new.keys()) + [x for x in old.keys() if x not in new]:
+            if old.get(f) != new.get(f):
+                lines.append("      • %s: %s ← %s" % (f, _dbwatch_short(_jd(new.get(f)), 60), _dbwatch_short(_jd(old.get(f)), 60)))
+            if len(lines) >= 8:
+                lines.append("      • …")
+                break
+        return "\n" + "\n".join(lines) if lines else ""
+    return "%s ← %s" % (_dbwatch_short(_jd(new), 80), _dbwatch_short(_jd(old), 80))
+
+
+def _dbwatch_enqueue(name, adds, mods, dels):
+    with _DBWATCH_LOCK:
+        _DBWATCH_PENDING.append((time.time(), name, adds, mods, dels))
+        _DBWATCH_EVENT.set()
+
+
+def _dbwatch_tg_post(method, payload):
+    url = "https://api.telegram.org/bot%s/%s" % (DBWATCH_BOT_TOKEN, method)
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=20) as res:
+        return res.read()
+
+
+def _dbwatch_send_text(text):
+    while text:
+        chunk, text = text[:3800], text[3800:]
+        for attempt in range(2):
+            try:
+                _dbwatch_tg_post("sendMessage", {"chat_id": DBWATCH_CHAT_ID, "text": chunk})
+                break
+            except Exception as e:
+                logging.error("dbwatch sendMessage: %s" % e)
+                time.sleep(2)
+
+
+def _dbwatch_send_file(path, filename, caption):
+    boundary = uuid.uuid4().hex
+    with open(path, "rb") as f:
+        content = f.read()
+    body = b""
+    for k, v in (("chat_id", DBWATCH_CHAT_ID), ("caption", caption)):
+        body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (boundary, k, v)).encode("utf-8")
+    body += ("--%s\r\nContent-Disposition: form-data; name=\"document\"; filename=\"%s\"\r\n"
+             "Content-Type: application/octet-stream\r\n\r\n" % (boundary, filename)).encode("utf-8")
+    body += content + ("\r\n--%s--\r\n" % boundary).encode("utf-8")
+    url = "https://api.telegram.org/bot%s/sendDocument" % DBWATCH_BOT_TOKEN
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(url, data=body, method="POST",
+                                         headers={"Content-Type": "multipart/form-data; boundary=%s" % boundary})
+            with urllib.request.urlopen(req, timeout=180):
+                return True
         except Exception as e:
-            logging.error(f"خطأ في قراءة {file_path}: {e}")
-            return default_data.copy() if isinstance(default_data, dict) else list(default_data)
+            logging.error("dbwatch sendDocument: %s" % e)
+            time.sleep(3)
+    return False
+
+
+def _dbwatch_flush(items):
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    merged = {}
+    for _ts, name, adds, mods, dels in items:
+        m = merged.setdefault(name, {"adds": [], "mods": [], "dels": [], "n": [0, 0, 0]})
+        m["adds"] += adds; m["mods"] += mods; m["dels"] += dels
+    lines = ["🔄 تم تحديث ملف قاعدة البيانات", "🕒 " + stamp, "━━━━━━━━━━━━━━"]
+    for name, m in merged.items():
+        title = _DBWATCH_TITLES.get(name, "")
+        lines.append("📁 %s%s" % (name, (" — " + title) if title else ""))
+        shown = 0
+        for sign, key in (("➕", "adds"), ("✏️", "mods"), ("🗑", "dels")):
+            for entry in m[key]:
+                if shown >= 15:
+                    break
+                lines.append("  %s %s" % (sign, entry))
+                shown += 1
+        total = sum(len(m[k]) for k in ("adds", "mods", "dels"))
+        if total > shown:
+            lines.append("  … و %d تغيير آخر" % (total - shown))
+        lines.append("")
+    _dbwatch_send_text("\n".join(lines))
+
+    # نسخة كاملة من القاعدة (بدون ما توقّف الموقع)
+    tmp_dir = tempfile.mkdtemp(prefix="dbwatch_")
+    try:
+        fname = "store_%s.db" % datetime.now().strftime("%Y%m%d_%H%M%S")
+        dest = os.path.join(tmp_dir, fname)
+        src_c = sqlite3.connect(DB_PATH, timeout=30)
+        dst_c = sqlite3.connect(dest)
+        try:
+            src_c.backup(dst_c)
+        finally:
+            dst_c.close(); src_c.close()
+        send_path, send_name = dest, fname
+        if os.path.getsize(dest) > DBWATCH_MAX_FILE:
+            gz = dest + ".gz"
+            with open(dest, "rb") as fi, gzip.open(gz, "wb", compresslevel=6) as fo:
+                shutil.copyfileobj(fi, fo)
+            send_path, send_name = gz, fname + ".gz"
+        if os.path.getsize(send_path) > DBWATCH_MAX_FILE:
+            _dbwatch_send_text("⚠️ ملف القاعدة أكبر من 50MB حتى بعد الضغط، تعذّر إرساله (التفاصيل أعلاه وصلت).")
+        else:
+            _dbwatch_send_file(send_path, send_name, "📦 تم تحديث ملف قاعدة البيانات — " + stamp)
+    except Exception as e:
+        logging.error("dbwatch backup/send: %s" % e)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _dbwatch_loop():
+    while True:
+        _DBWATCH_EVENT.wait()
+        while True:
+            with _DBWATCH_LOCK:
+                if not _DBWATCH_PENDING:
+                    _DBWATCH_EVENT.clear()
+                    break
+                first, last = _DBWATCH_PENDING[0][0], _DBWATCH_PENDING[-1][0]
+            now = time.time()
+            if now - last >= DBWATCH_DEBOUNCE or now - first >= DBWATCH_MAX_WAIT:
+                with _DBWATCH_LOCK:
+                    items = list(_DBWATCH_PENDING)
+                    del _DBWATCH_PENDING[:]
+                    _DBWATCH_EVENT.clear()
+                try:
+                    _dbwatch_flush(items)
+                except Exception as e:
+                    logging.error("dbwatch flush: %s" % e)
+                break
+            time.sleep(0.5)
+
+
+
+def _db_save(name, data):
+    if _DB_FROZEN:
+        return
+    kind, items = _db_snapshot(data)
+    cache = _DB_CACHE.get(name)
+    if cache is not None and cache["kind"] != kind:
+        cache = None
+    old_rows = cache["rows"] if cache is not None else {}
+
+    new_rows = {}
+    upserts = []
+    for k, pos, s in items:
+        d = _digest(s)
+        new_rows[k] = (pos, d)
+        if old_rows.get(k) != (pos, d):
+            upserts.append((name, k, pos, s))
+    deletes = [(name, k) for k in old_rows if k not in new_rows]
+
+    if cache is not None and not upserts and not deletes:
+        return   # ما تغيّر شي: ما في أي كتابة على القرص
+
+    watch = bool(DBWATCH_ENABLED and _DBWATCH_READY and cache is not None and name not in DBWATCH_IGNORE)
+    old_vals = {}
+    if watch:
+        try:
+            _c = _db()
+            for _k in [u[1] for u in upserts if u[1] in old_rows][:30] + [d[1] for d in deletes][:30]:
+                _r = _c.execute("SELECT v FROM rows WHERE coll=? AND k=?", (name, _k)).fetchone()
+                if _r:
+                    old_vals[_k] = _r[0]
+        except Exception:
+            old_vals = {}
+
+    conn = _db()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if cache is None:
+            conn.execute("DELETE FROM rows WHERE coll=?", (name,))
+        elif deletes:
+            conn.executemany("DELETE FROM rows WHERE coll=? AND k=?", deletes)
+        if upserts:
+            conn.executemany("INSERT OR REPLACE INTO rows(coll,k,pos,v) VALUES(?,?,?,?)", upserts)
+        conn.execute("INSERT OR REPLACE INTO colls(name,kind,updated) VALUES(?,?,?)", (name, kind, time.time()))
+        conn.execute("COMMIT")
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    _DB_CACHE[name] = {"kind": kind, "rows": new_rows}
+
+    if watch:
+        try:
+            adds, mods, dels = [], [], []
+            for _n, k, _pos, s in upserts:
+                if k in old_rows:
+                    mods.append("%s%s" % (_dbwatch_label(k, s), (": " + _dbwatch_diff(old_vals[k], s)) if k in old_vals else ""))
+                else:
+                    adds.append("%s: %s" % (_dbwatch_label(k, s), _dbwatch_short(s, 120)))
+            for _n, k in deletes:
+                dels.append(_dbwatch_label(k, old_vals.get(k)))
+            _dbwatch_enqueue(name, adds, mods, dels)
+        except Exception as e:
+            logging.error("dbwatch enqueue: %s" % e)
+
+
+def _db_load(name, kind):
+    conn = _db()
+    rows = conn.execute("SELECT k, v FROM rows WHERE coll=? ORDER BY pos", (name,)).fetchall()
+    if kind == "list":
+        data = [json.loads(v) for _k, v in rows]
+    elif kind == "dict":
+        data = {k: json.loads(v) for k, v in rows}
     else:
-        save_json_file(file_path, default_data)
-        return default_data.copy() if isinstance(default_data, dict) else list(default_data)
+        data = json.loads(rows[0][1]) if rows else None
+    _DB_CACHE[name] = {"kind": kind, "rows": {k: (i, _digest(v)) for i, (k, v) in enumerate(rows)}}
+    return data
+
+
+def _default_copy(default_data):
+    return default_data.copy() if isinstance(default_data, dict) else (
+        list(default_data) if isinstance(default_data, list) else default_data)
+
+
+def _archive_legacy_json(file_path):
+    """ينقل ملف JSON القديم لمجلد النسخ بعد ما انتقلت بياناته لـ SQLite (ما بنحذفه نهائياً)."""
+    try:
+        os.makedirs(JSON_BACKUP_DIR, exist_ok=True)
+        dest = os.path.join(JSON_BACKUP_DIR, os.path.basename(file_path))
+        if os.path.exists(dest):
+            dest = dest + "." + datetime.now().strftime("%Y%m%d%H%M%S")
+        os.replace(file_path, dest)
+    except Exception as e:
+        logging.error(f"تعذر أرشفة {file_path}: {e}")
+
+
+def load_json_file(file_path, default_data):
+    name = _coll_name(file_path)
+    try:
+        with _DB_LOCK:
+            row = _db().execute("SELECT kind FROM colls WHERE name=?", (name,)).fetchone()
+            if row:
+                return _db_load(name, row[0])
+
+            # أول مرة: إذا في ملف JSON قديم ننقله لقاعدة البيانات
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        legacy = json.load(f)
+                except Exception as e:
+                    logging.error(f"خطأ في قراءة {file_path}: {e}")
+                    try:
+                        os.replace(file_path, file_path + ".corrupt")
+                    except OSError:
+                        pass
+                    legacy = None
+                if legacy is not None:
+                    _db_save(name, legacy)
+                    kind = _DB_CACHE[name]["kind"]
+                    loaded = _db_load(name, kind)
+                    if _jd(loaded) == _jd(legacy):
+                        _archive_legacy_json(file_path)
+                        logging.info(f"تم نقل {os.path.basename(file_path)} إلى SQLite")
+                    else:
+                        logging.error(f"عدم تطابق أثناء نقل {file_path} - تم إبقاء الملف الأصلي")
+                    return loaded
+
+            # ما في بيانات: نخزّن القيمة الافتراضية
+            data = _default_copy(default_data)
+            _db_save(name, data)
+            return data
+    except Exception as e:
+        logging.error(f"خطأ في قراءة {file_path} من قاعدة البيانات: {e}")
+        return _default_copy(default_data)
 
 
 def save_json_file(file_path, data):
-    # كتابة ذرّية (ملف مؤقت ثم استبدال) حتى ما يتخرب الملف إذا انقطع السيرفر أثناء الحفظ
-    tmp_path = file_path + ".tmp"
+    name = _coll_name(file_path)
     try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
-        os.replace(tmp_path, file_path)
+        with _DB_LOCK:
+            _db_save(name, data)
     except Exception as e:
-        logging.error(f"خطأ في كتابة {file_path}: {e}")
+        logging.error(f"خطأ في كتابة {file_path} إلى قاعدة البيانات: {e}")
+
+
+def db_backup_now():
+    """نسخة احتياطية كاملة (بدون ما توقّف الموقع) + حذف النسخ القديمة."""
+    os.makedirs(DB_BACKUP_DIR, exist_ok=True)
+    dest = os.path.join(DB_BACKUP_DIR, "store_%s.db" % datetime.now().strftime("%Y%m%d_%H%M%S"))
+    src = sqlite3.connect(DB_PATH, timeout=30)
+    dst = sqlite3.connect(dest)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    files = sorted(f for f in os.listdir(DB_BACKUP_DIR) if f.startswith("store_") and f.endswith(".db"))
+    for old in files[:-DB_BACKUP_KEEP]:
         try:
-            os.remove(tmp_path)
+            os.remove(os.path.join(DB_BACKUP_DIR, old))
         except OSError:
             pass
+    return dest
+
+
+def db_restore_from_bytes(raw):
+    """يستبدل كل بيانات الموقع بمحتوى ملف قاعدة بيانات (store.db) مرفوع. بياخد نسخة احتياطية قبل ما يبدّل."""
+    global _DB_FROZEN
+    if not raw or raw[:16] != b"SQLite format 3\x00":
+        return {"status": "error", "message": "هاد مو ملف قاعدة بيانات صالح (لازم يكون ملف store.db)"}
+    folder = os.path.dirname(os.path.abspath(DB_PATH))
+    os.makedirs(folder, exist_ok=True)
+    tmp = os.path.join(folder, "restore_upload_%s.db" % uuid.uuid4().hex)
+    try:
+        with open(tmp, "wb") as f:
+            f.write(raw)
+        chk = sqlite3.connect(tmp, timeout=30)
+        try:
+            ok = chk.execute("PRAGMA quick_check").fetchone()
+            if not ok or ok[0] != "ok":
+                return {"status": "error", "message": "ملف قاعدة البيانات تالف"}
+            tables = {r[0] for r in chk.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if not {"colls", "rows"} <= tables:
+                return {"status": "error", "message": "هاد الملف مو من قاعدة بيانات هالموقع"}
+            n_colls = chk.execute("SELECT COUNT(*) FROM colls").fetchone()[0]
+            n_rows = chk.execute("SELECT COUNT(*) FROM rows").fetchone()[0]
+            if n_colls == 0:
+                return {"status": "error", "message": "ملف قاعدة البيانات فاضي"}
+        except sqlite3.Error as e:
+            return {"status": "error", "message": "تعذر قراءة الملف: %s" % e}
+        finally:
+            chk.close()
+
+        with _DB_LOCK:
+            # نسخة أمان من البيانات الحالية قبل الاستبدال
+            try:
+                os.makedirs(DB_BACKUP_DIR, exist_ok=True)
+                safe = os.path.join(DB_BACKUP_DIR, "before_restore_%s.db" % datetime.now().strftime("%Y%m%d_%H%M%S"))
+                src = sqlite3.connect(DB_PATH, timeout=30)
+                dst = sqlite3.connect(safe)
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
+                    src.close()
+            except Exception as e:
+                logging.error("نسخة الأمان قبل الاستعادة فشلت: %s" % e)
+                return {"status": "error", "message": "تعذر أخذ نسخة أمان من البيانات الحالية، ما تمت الاستعادة"}
+
+            conn = _db()
+            conn.execute("ATTACH DATABASE ? AS restore_src", (tmp,))
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    conn.execute("DELETE FROM rows")
+                    conn.execute("DELETE FROM colls")
+                    conn.execute("INSERT INTO colls(name,kind,updated) SELECT name,kind,updated FROM restore_src.colls")
+                    conn.execute("INSERT INTO rows(coll,k,pos,v) SELECT coll,k,pos,v FROM restore_src.rows")
+                    conn.execute("COMMIT")
+                except Exception:
+                    try:
+                        conn.execute("ROLLBACK")
+                    except Exception:
+                        pass
+                    raise
+            except Exception as e:
+                logging.error("فشل استعادة قاعدة البيانات: %s" % e)
+                return {"status": "error", "message": "فشلت الاستعادة، بياناتك الحالية ما تغيّرت"}
+            finally:
+                try:
+                    conn.execute("DETACH DATABASE restore_src")
+                except Exception:
+                    pass
+            _DB_FROZEN = True
+            _DB_CACHE.clear()
+        logging.warning("تمت استعادة قاعدة البيانات من ملف مرفوع (%d مجموعة، %d سطر)" % (n_colls, n_rows))
+        return {"status": "success", "collections": n_colls, "rows": n_rows,
+                "message": "تمت الاستعادة بنجاح، الموقع عم يعيد التشغيل لتحميل البيانات"}
+    except Exception as e:
+        logging.error("db_restore_from_bytes: %s" % e)
+        return {"status": "error", "message": "حدث خطأ أثناء الاستعادة"}
+    finally:
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                os.remove(tmp + suffix)
+            except OSError:
+                pass
+
+
+def _restart_process_soon(delay=1.5):
+    """بعد الاستعادة: يعيد تشغيل السيرفر حتى تتحمّل كل البيانات الجديدة بالذاكرة."""
+    def _go():
+        time.sleep(delay)
+        try:
+            _db_close()
+        except Exception:
+            pass
+        try:
+            import sys
+            logging.warning("إعادة تشغيل السيرفر بعد استعادة قاعدة البيانات")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception as e:
+            logging.error("تعذر إعادة التشغيل الذاتي (%s) - إنهاء العملية ليعيد المستضيف تشغيلها" % e)
+            os._exit(0)
+    threading.Thread(target=_go, daemon=True).start()
+
+
+def _db_maintenance_loop():
+    time.sleep(90)
+    while True:
+        try:
+            files = []
+            if os.path.isdir(DB_BACKUP_DIR):
+                files = [os.path.join(DB_BACKUP_DIR, f) for f in os.listdir(DB_BACKUP_DIR) if f.endswith(".db")]
+            newest = max((os.path.getmtime(p) for p in files), default=0)
+            if time.time() - newest > 20 * 3600:
+                logging.info("نسخة احتياطية لقاعدة البيانات: " + db_backup_now())
+            with _DB_LOCK:
+                chk = _db().execute("PRAGMA quick_check").fetchone()
+                if chk and chk[0] != "ok":
+                    logging.error(f"فحص قاعدة البيانات: {chk[0]}")
+                _db().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                _db().execute("PRAGMA optimize")
+        except Exception as e:
+            logging.error(f"صيانة قاعدة البيانات: {e}")
+        time.sleep(3600)
+
+
+def _db_close():
+    global _DB_CONN
+    try:
+        with _DB_LOCK:
+            if _DB_CONN is not None:
+                try:
+                    _DB_CONN.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except Exception:
+                    pass
+                _DB_CONN.close()
+                _DB_CONN = None
+    except Exception:
+        pass
+
+
+atexit.register(_db_close)
 
 
 CATEGORIES_DATA = load_json_file(CATEGORIES_FILE, DEFAULT_CATEGORIES)
@@ -9215,6 +9770,7 @@ ADMIN_HTML_CONTENT = """
                 <button class="sub-menu-btn" onclick="openMaintenanceModal()" style="color:#f87171; border-color:#f87171; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> وضع الصيانة</button>
                 <button class="sub-menu-btn" onclick="openTgNotifyScreen()" style="color:#38bdf8; border-color:#38bdf8; font-weight:800;"><svg class="ic"><use href="#i-send"/></svg> تعيين الاشعارات</button>
                 <button class="sub-menu-btn" onclick="tgNotifyTestFromMenu()" style="color:#a78bfa; border-color:#a78bfa; font-weight:800;"><svg class="ic"><use href="#i-activity"/></svg> ارسال رسالة تجريب للبوتات</button>
+                <button class="sub-menu-btn" onclick="openRestoreDbModal()" style="color:#fb923c; border-color:#fb923c; font-weight:800;"><svg class="ic"><use href="#i-settings"/></svg> رفع قاعدة بيانات</button>
             </div>
 
             <button class="admin-menu-btn" onclick="toggleSubMenu('designMenu')">
@@ -9815,6 +10371,23 @@ ADMIN_HTML_CONTENT = """
                 </div>
                 <button class="save-btn" style="background:linear-gradient(135deg,#a855f7,#9333ea);" onclick="saveEditedGroup()">حفظ التعديلات</button>
                 <button class="btn-secondary" onclick="closeModal('editGroupModalOverlay')">إلغاء</button>
+            </div>
+        </div>
+
+        <!-- Restore Database Modal -->
+        <div class="modal-overlay" id="restoreDbModalOverlay">
+            <div class="modal-box" style="max-width: 420px;">
+                <div class="modal-title" style="color:#fb923c; font-size:1.1rem;"><svg class="ic"><use href="#i-settings"/></svg> رفع قاعدة بيانات</div>
+                <div style="font-size:0.85rem; color:#fca5a5; line-height:1.7; margin-bottom:12px;">
+                    اختار ملف store.db (النسخة اللي بتوصلك على تلغرام). عند الحفظ بيتم استبدال كل بيانات الموقع (مستخدمين، أرصدة، طلبات، منتجات، إعدادات...) بمحتوى الملف. بياخد الموقع نسخة أمان من البيانات الحالية قبل الاستبدال، وبيعيد تشغيل نفسه بعدها.
+                </div>
+                <div class="form-group">
+                    <label>ملف قاعدة البيانات:</label>
+                    <input type="file" id="restoreDbInput" accept=".db,.sqlite,.sqlite3,application/octet-stream" onchange="onRestoreDbPick(this)">
+                </div>
+                <div id="restoreDbStatus" style="font-size:0.85rem; color:#a1a1aa; min-height:22px; margin-bottom:10px;"></div>
+                <button id="restoreDbSaveBtn" class="maint-toggle-btn shutdown" onclick="saveRestoreDb()">حفظ</button>
+                <button class="btn-secondary" onclick="closeModal('restoreDbModalOverlay')">إغلاق</button>
             </div>
         </div>
 
@@ -11900,7 +12473,8 @@ ADMIN_HTML_CONTENT = """
             openLogoManageModal: 'design', openBannerShineModal: 'design', openAppearanceSettings: 'design', openTickerSettingsModal: 'design',
             openAboutUsSettingsModal: 'settings', openSupportSettingsModal: 'settings', openGoogleSettingsModal: 'settings',
             openMaintenanceModal: 'settings', openAnnouncementModal: 'settings',
-            openAdminAccountsScreen: 'owner'
+            openAdminAccountsScreen: 'owner',
+            openRestoreDbModal: 'owner'
         };
 
         function adminHasPerm(p) {
@@ -12347,6 +12921,60 @@ ADMIN_HTML_CONTENT = """
                 banner.style.display = 'none';
                 btn.className = 'maint-toggle-btn shutdown';
                 btn.innerHTML = '<svg class="ic"><use href="#i-stop"/></svg> إيقاف التشغيل';
+            }
+        }
+
+        let restoreDbFile = null;
+        function openRestoreDbModal() {
+            toggleSidebar();
+            restoreDbFile = null;
+            document.getElementById('restoreDbInput').value = '';
+            document.getElementById('restoreDbStatus').textContent = '';
+            document.getElementById('restoreDbSaveBtn').disabled = false;
+            openModal('restoreDbModalOverlay');
+        }
+
+        function onRestoreDbPick(inp) {
+            restoreDbFile = (inp.files && inp.files[0]) ? inp.files[0] : null;
+            const st = document.getElementById('restoreDbStatus');
+            st.style.color = '#a1a1aa';
+            st.textContent = restoreDbFile ? (restoreDbFile.name + ' (' + (restoreDbFile.size / 1048576).toFixed(2) + ' MB)') : '';
+        }
+
+        async function saveRestoreDb() {
+            const st = document.getElementById('restoreDbStatus');
+            const btn = document.getElementById('restoreDbSaveBtn');
+            if (!restoreDbFile) { alert('اختار ملف قاعدة البيانات أولاً'); return; }
+            if (!confirm('تحذير: رح تنستبدل كل بيانات الموقع الحالية بمحتوى هالملف. متأكد؟')) return;
+            btn.disabled = true;
+            st.style.color = '#a1a1aa';
+            st.textContent = 'عم يرفع الملف ويستعيد البيانات... لا تسكّر الصفحة';
+            try {
+                const b64 = await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onload = () => { const s = String(r.result || ''); resolve(s.substring(s.indexOf(',') + 1)); };
+                    r.onerror = () => reject(new Error('read'));
+                    r.readAsDataURL(restoreDbFile);
+                });
+                const res = await fetch('/api/restore_database', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: restoreDbFile.name, data: b64 })
+                });
+                const d = await res.json();
+                if (d.status === 'success') {
+                    st.style.color = '#4ade80';
+                    st.textContent = 'تمت الاستعادة (' + d.collections + ' مجموعة). الموقع عم يعيد التشغيل، رح تتحدّث الصفحة تلقائياً...';
+                    setTimeout(() => { adminClearSession(); location.reload(); }, 8000);
+                } else {
+                    st.style.color = '#f87171';
+                    st.textContent = d.message || 'فشلت الاستعادة';
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                st.style.color = '#f87171';
+                st.textContent = 'فشل الاتصال بالخادم';
+                btn.disabled = false;
             }
         }
 
@@ -21714,6 +22342,7 @@ ADMIN_PATH_PERMS = {
     "/api/delete_multiple_products": "products",
     "/api/admin_account_save": "owner",
     "/api/admin_account_delete": "owner",
+    "/api/restore_database": "owner",
     "/api/export_xlsx": ("orders", "clients", "stats", "products"),
 }
 
@@ -22982,6 +23611,18 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(blob)))
             self.end_headers()
             self.wfile.write(blob)
+            return True
+        if path == "/api/restore_database":
+            try:
+                raw = base64.b64decode(str(d.get("data") or ""))
+            except Exception:
+                self._reply_json({"status": "error", "message": "الملف غير صالح"}, 400)
+                return True
+            logging.warning("طلب استعادة قاعدة بيانات من الأدمن: %s" % ctx.get("name"))
+            res = db_restore_from_bytes(raw)
+            self._reply_json(res)
+            if res.get("status") == "success":
+                _restart_process_soon()
             return True
         if path == "/api/admin_account_delete":
             res = admin_account_delete(d)
@@ -25755,6 +26396,19 @@ def main():
         push_public_key()
     except Exception as e:
         logging.error(f"Web Push غير مفعّل: {e}")
+    try:
+        global _DBWATCH_READY
+        if DBWATCH_ENABLED and DBWATCH_BOT_TOKEN and DBWATCH_CHAT_ID:
+            threading.Thread(target=_dbwatch_loop, daemon=True).start()
+            _DBWATCH_READY = True
+            logging.info("مراقب تغييرات قاعدة البيانات (تليجرام) شغّال")
+    except Exception as e:
+        logging.error(f"تعذر تشغيل مراقب التغييرات: {e}")
+    try:
+        threading.Thread(target=_db_maintenance_loop, daemon=True).start()
+        logging.info(f"قاعدة البيانات SQLite: {os.path.abspath(DB_PATH)}")
+    except Exception as e:
+        logging.error(f"تعذر تشغيل صيانة قاعدة البيانات: {e}")
     ThreadingHTTPServer.request_queue_size = 128  # الافتراضي 5: لما ينفتح عدة اتصالات مرة وحدة كانت تنقطع (Connection reset)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), WebAppHandler)
     server.daemon_threads = True
