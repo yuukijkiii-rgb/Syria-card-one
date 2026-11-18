@@ -3486,18 +3486,29 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             border-top: 1px solid var(--border-color); padding-top: 16px;
         }
         .dark-mode-title { font-size: 0.95rem; font-weight: 700; color: var(--text-color); }
-        .toggle-switch { position: relative; display: inline-block; width: 54px; height: 30px; }
+        .toggle-switch { position: relative; display: inline-block; width: 58px; height: 30px; }
         .toggle-switch input { opacity: 0; width: 0; height: 0; }
         .toggle-slider {
             position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #383842; transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 34px;
+            background-color: #3a3a44; transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 34px;
+            box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
         }
+        body.light-mode .toggle-slider { background-color: #d5d8dc; box-shadow: inset 0 1px 3px rgba(0,0,0,0.12); }
         .toggle-slider:before {
-            position: absolute; content: ""; height: 22px; width: 22px; left: 4px; bottom: 4px;
-            background-color: #4ade80; transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 50%;
+            position: absolute; content: ""; height: 24px; width: 24px; left: 3px; bottom: 3px;
+            background-color: #ffffff; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f59e0b' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='4' fill='%23fbbf24'/%3E%3Cpath d='M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: center; background-size: 18px 18px;
+            transition: .3s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
-        input:checked + .toggle-slider { background-color: #2e593e; }
-        input:checked + .toggle-slider:before { transform: translateX(24px); background-color: #4ade80; }
+        input:checked + .toggle-slider { background-color: #fcd34d; }
+        input:checked + .toggle-slider:before { transform: translateX(28px); }
+
+        .sidebar-support-row { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 8px 0 2px; }
+        .sup-ico { position: relative; width: 30px; height: 30px; display: inline-flex; text-decoration: none; -webkit-tap-highlight-color: transparent; transition: transform .15s; }
+        .sup-ico:active { transform: scale(.9); }
+        .sup-ico > svg:first-child { width: 30px; height: 30px; display: block; }
+        .sup-ico .sup-badge { position: absolute; right: -5px; bottom: -4px; width: 15px; height: 15px; }
 
         .icon-home { color: #00e676; }        
         .icon-deposit { color: #38bdf8; }     
@@ -3591,10 +3602,16 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
         .search-container { width: 100%; }
         .search-input {
-            width: 100%; padding: 9px 12px; background-color: var(--card-bg);
-            border: 1px solid var(--border-color); border-radius: 8px;
+            width: 100%; padding: 9px 38px 9px 12px; background-color: var(--input-bg);
+            border: 1px solid transparent; border-radius: 999px;
             color: var(--text-color); font-size: 0.8rem; outline: none; transition: border-color 0.2s;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7.5'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: left 14px center; background-size: 16px 16px;
+            padding-left: 40px; padding-right: 16px;
         }
+        .search-input::placeholder { color: var(--subtext-color); opacity: 1; }
+        body.light-mode .search-input { background-color: #e9ecee; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7.5'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E"); }
+        body.light-mode .search-input::placeholder { color: #6b7280; }
         .search-input:focus { border-color: var(--accent-color); }
 
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 12px; padding: 10px 5px; }
@@ -3626,19 +3643,38 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             direction: ltr; text-align: center;
         }
 
-        .currency-selector-box {
-            background: linear-gradient(135deg, #78350f 0%, #92400e 50%, #b45309 100%);
-            border: 1px solid #f59e0b; border-radius: 12px;
-            padding: 10px 14px; display: flex; align-items: center;
-            justify-content: space-between; cursor: pointer; width: 100%;
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
-            transition: transform 0.15s ease;
+        .cur-wrap { position: relative; display: flex; justify-content: center; margin: 2px 0 10px; z-index: 40; }
+        .cur-pill {
+            display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+            padding: 6px 16px; border-radius: 999px; border: 1px solid rgba(250,204,21,0.35);
+            background: rgba(250,204,21,0.16); color: #facc15;
+            font-family: inherit; font-size: 0.82rem; font-weight: 800;
+            box-shadow: 0 3px 10px rgba(250,204,21,0.12); transition: transform .15s ease;
+            -webkit-tap-highlight-color: transparent;
         }
-        .currency-selector-box:active { transform: scale(0.97); }
-        .currency-selector-label { font-size: 0.82rem; font-weight: 800; color: #ffffff; }
-        .currency-selector-value { font-size: 0.78rem; font-weight: 700; color: #fef3c7; direction: rtl; }
+        .cur-pill:active { transform: scale(0.96); }
+        .cur-pill svg { width: 17px; height: 17px; transition: transform .35s ease; }
+        .cur-pill[aria-expanded="true"] svg { transform: rotate(180deg); }
+        .cur-panel {
+            display: none; position: absolute; top: calc(100% + 8px); left: 0; right: 0;
+            background: #14141c; border: 1px solid #27272a; border-radius: 16px;
+            padding: 10px 8px; box-shadow: 0 14px 34px rgba(0,0,0,0.45);
+        }
+        .cur-panel.open { display: block; }
+        .cur-list { display: flex; flex-direction: column; gap: 7px; max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 1px; }
+        .cur-opt {
+            width: 100%; padding: 11px 12px; border-radius: 999px; cursor: pointer; text-align: center;
+            background: rgba(16,185,129,0.10); border: 1px solid rgba(16,185,129,0.28); color: #6ee7b7;
+            font-family: inherit; font-size: 0.86rem; font-weight: 500; direction: rtl;
+            transition: background .15s;
+        }
+        .cur-opt:active { background: rgba(16,185,129,0.2); }
+        .cur-opt.selected { background: rgba(16,185,129,0.24); border-color: rgba(16,185,129,0.55); font-weight: 800; }
+        body.light-mode .cur-pill { background: #fff7a8; border-color: #fde68a; color: #a16207; box-shadow: 0 3px 10px rgba(234,179,8,0.25); }
+        body.light-mode .cur-panel { background: #ffffff; border-color: #e5e7eb; box-shadow: 0 12px 30px rgba(0,0,0,0.12); }
+        body.light-mode .cur-opt { background: #ecfdf5; border-color: #bbf7d0; color: #065f46; }
+        body.light-mode .cur-opt.selected { background: #d1fae5; border-color: #86efac; color: #064e3b; }
 
-        #currencySelectModal .modal-box { background-color: #121023; }
         .currency-option-item {
             display: flex; align-items: center; justify-content: space-between;
             padding: 12px 14px; background-color: #1a1730; border: 1px solid #2e2850;
@@ -4756,13 +4792,6 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                     <span class="user-info-val" id="sbUserId" style="color:var(--accent-color);">#1000</span>
                 </div>
             </div>
-            <div class="currency-selector-box" id="currencySelectorBox" onclick="openCurrencySelectModal()">
-                <div style="display:flex; flex-direction:column; gap:2px;">
-                    <span class="currency-selector-label">💱 العملة</span>
-                    <span class="currency-selector-value" id="currentCurrencyLabel">الدولار الأمريكي $</span>
-                </div>
-                <span style="font-size:1rem; color:#fef3c7;">◀</span>
-            </div>
         </div>
 
         <div class="sidebar-menu-list" id="sidebarMenuList">
@@ -4827,13 +4856,6 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 </span>
             </div>
 
-            <div class="menu-nav-item" id="supportNavItem" onclick="openSupportLinks()">
-                <span>الدعم</span>
-                <span class="nav-icon icon-support">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.11-.9-2-2-2zm0 14H4V6h16v12zM6 10h2v2H6v-2zm10 0h2v2h-2v-2z"/></svg>
-                </span>
-            </div>
-
             <div class="menu-nav-item logged-in-item logout-btn-nav" style="display:none;" onclick="handleLogout()">
                 <span>تسجيل الخروج</span>
                 <span class="nav-icon" style="color:#f87171;">
@@ -4843,20 +4865,14 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         </div>
 
         <div class="dark-mode-item">
-            <span class="dark-mode-title">الوضع الداكن</span>
+            <span class="dark-mode-title">الوضع الفاتح</span>
             <label class="toggle-switch">
-                <input type="checkbox" id="darkModeToggle" checked onchange="toggleDarkMode(this.checked)">
+                <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode(!this.checked)">
                 <span class="toggle-slider"></span>
             </label>
         </div>
-    </div>
 
-    <div class="modal-overlay" id="currencySelectModal">
-        <div class="modal-box">
-            <div style="font-size:1rem; font-weight:800; text-align:center; color:#f59e0b; border-bottom:1px solid var(--border-color); padding-bottom:10px;">💱 اختيار العملة</div>
-            <div id="currencyOptionsList" style="display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow-y:auto; padding:4px 0;"></div>
-            <button class="cancel-btn-outline" style="width:100%;" onclick="closeCurrencySelectModal()">إغلاق</button>
-        </div>
+        <div class="sidebar-support-row" id="sidebarSupportRow" style="display:none;"></div>
     </div>
 
     <div id="authModal">
@@ -4951,6 +4967,15 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
     <div class="main-content-wrapper">
         <div id="shopMainSection">
+            <div class="cur-wrap" id="curWrap">
+                <button type="button" class="cur-pill" id="currencySelectorBox" onclick="toggleCurrencyDropdown(event)" aria-haspopup="listbox" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    <span>العملة <span id="currentCurrencyLabel" dir="auto">USD</span></span>
+                </button>
+                <div class="cur-panel" id="currencyDropdown" role="listbox">
+                    <div id="currencyOptionsList" class="cur-list"></div>
+                </div>
+            </div>
             <div class="section-header">
                 <div class="search-container" id="searchContainer">
                     <input type="text" id="searchInput" class="search-input" placeholder="ابحث هنا..." oninput="handleSearch()">
@@ -5737,15 +5762,37 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        const SUP_WA = '<svg viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>';
+        const SUP_TG = '<svg viewBox="0 0 24 24"><path fill="#2aabee" d="M21.9 3.3 2.6 10.8c-1.3.5-1.3 1.3-.2 1.6l4.9 1.5 1.9 5.8c.2.6.1.8.7.8.5 0 .7-.2 1-.5l2.4-2.3 4.9 3.6c.9.5 1.5.2 1.8-.8l3.2-15.2c.3-1.3-.5-1.9-1.4-1.5z"/><path fill="#fff" opacity=".9" d="m9.3 14.1 9.4-6c.4-.3.8-.1.4.2l-7.6 7-.3 3.1z"/></svg>';
+        const SUP_GROUP_BADGE = '<svg class="sup-badge" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#22c55e"/><circle cx="6" cy="6" r="1.7" fill="#fff"/><circle cx="10.3" cy="6.6" r="1.4" fill="#fff" opacity=".85"/><path fill="#fff" d="M2.8 12c0-1.9 1.4-3.1 3.2-3.1s3.2 1.2 3.2 3.1z"/><path fill="#fff" opacity=".85" d="M9.4 9.5c.3-.1.6-.1.9-.1 1.5 0 2.7 1 2.7 2.6h-3.1c0-.9-.2-1.7-.5-2.5z"/></svg>';
+
+        async function loadSidebarSupportIcons() {
+            const row = document.getElementById('sidebarSupportRow');
+            if (!row) return;
+            try {
+                const res = await fetch('/api/get_site_settings');
+                const st = await res.json();
+                const tg = v => 'https://t.me/' + String(v).trim().replace(/^@/, '');
+                const wa = v => 'https://wa.me/' + String(v).replace(/[^0-9]/g, '');
+                const items = [];
+                if (st.telegram_channel) items.push({ url: tg(st.telegram_channel), svg: SUP_TG + SUP_GROUP_BADGE, t: 'قناة تلغرام' });
+                if (st.telegram_support) items.push({ url: tg(st.telegram_support), svg: SUP_TG, t: 'دعم تلغرام' });
+                if (st.whatsapp_channel) items.push({ url: st.whatsapp_channel, svg: SUP_WA + SUP_GROUP_BADGE, t: 'قناة واتساب' });
+                if (st.whatsapp_support) items.push({ url: wa(st.whatsapp_support), svg: SUP_WA, t: 'دعم واتساب' });
+                row.innerHTML = items.map(i => '<a class="sup-ico" href="' + i.url.replace(/"/g, '&quot;') + '" target="_blank" rel="noopener" title="' + i.t + '" aria-label="' + i.t + '">' + i.svg + '</a>').join('');
+                row.style.display = items.length ? 'flex' : 'none';
+            } catch (e) { row.style.display = 'none'; }
+        }
+
         function initTheme() {
             const savedTheme = localStorage.getItem('theme');
             const toggleBtn = document.getElementById('darkModeToggle');
             if (savedTheme === 'light') {
                 document.body.classList.add('light-mode');
-                if (toggleBtn) toggleBtn.checked = false;
+                if (toggleBtn) toggleBtn.checked = true;
             } else {
                 document.body.classList.remove('light-mode');
-                if (toggleBtn) toggleBtn.checked = true;
+                if (toggleBtn) toggleBtn.checked = false;
             }
             applyCurrentTheme();
         }
@@ -6394,54 +6441,50 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
 
         function updateCurrencyLabel() {
             const labelEl = document.getElementById('currentCurrencyLabel');
-            if (selectedCurrency) {
-                labelEl.innerText = selectedCurrency.name + ' (' + selectedCurrency.symbol + ')';
-            } else {
-                labelEl.innerText = 'الدولار الأمريكي $';
-            }
+            if (!labelEl) return;
+            labelEl.innerText = selectedCurrency ? selectedCurrency.name : 'USD';
         }
 
-        function openCurrencySelectModal() {
-            if (document.getElementById('sidebar').classList.contains('active')) {
-                toggleSidebar();
-            }
+        function toggleCurrencyDropdown(ev) {
+            if (ev) ev.stopPropagation();
+            const panel = document.getElementById('currencyDropdown');
+            if (panel.classList.contains('open')) { closeCurrencySelectModal(); return; }
             renderCurrencyOptions();
-            document.getElementById('currencySelectModal').classList.add('active');
+            panel.classList.add('open');
+            document.getElementById('currencySelectorBox').setAttribute('aria-expanded', 'true');
         }
+        function openCurrencySelectModal() { toggleCurrencyDropdown(); }
 
         function closeCurrencySelectModal() {
-            document.getElementById('currencySelectModal').classList.remove('active');
+            const panel = document.getElementById('currencyDropdown');
+            if (panel) panel.classList.remove('open');
+            const btn = document.getElementById('currencySelectorBox');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
         }
+
+        document.addEventListener('click', function (e) {
+            const wrap = document.getElementById('curWrap');
+            if (wrap && !wrap.contains(e.target)) closeCurrencySelectModal();
+        });
+        document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeCurrencySelectModal(); });
 
         function renderCurrencyOptions() {
             const container = document.getElementById('currencyOptionsList');
             container.innerHTML = '';
 
-            const usdOption = document.createElement('div');
-            usdOption.className = 'currency-option-item default-option' + (!selectedCurrency ? ' selected' : '');
-            usdOption.innerHTML = `
-                <div>
-                    <div class="currency-option-name">الدولار الأمريكي $</div>
-                    <div class="currency-option-rate">العملة الافتراضية</div>
-                </div>
-                ${!selectedCurrency ? '<span style="color:#4ade80; font-weight:800;">✓</span>' : ''}
-            `;
-            usdOption.onclick = () => selectCurrency(null);
-            container.appendChild(usdOption);
+            const mk = (text, selected, onPick) => {
+                const b = document.createElement('div');
+                b.className = 'cur-opt' + (selected ? ' selected' : '');
+                b.setAttribute('role', 'option');
+                b.textContent = text;
+                b.onclick = onPick;
+                container.appendChild(b);
+            };
 
-            dataStore.currencies.forEach(c => {
+            mk('USD - $', !selectedCurrency, () => selectCurrency(null));
+            (dataStore.currencies || []).forEach(c => {
                 const isSelected = selectedCurrency && selectedCurrency.name === c.name;
-                const opt = document.createElement('div');
-                opt.className = 'currency-option-item' + (isSelected ? ' selected' : '');
-                opt.innerHTML = `
-                    <div>
-                        <div class="currency-option-name">${c.name} (${c.symbol})</div>
-                        <div class="currency-option-rate">سعر الصرف: ${c.exchange_rate}</div>
-                    </div>
-                    ${isSelected ? '<span style="color:#fef3c7; font-weight:800;">✓</span>' : ''}
-                `;
-                opt.onclick = () => selectCurrency(c);
-                container.appendChild(opt);
+                mk(c.name + ' - ' + c.symbol, isSelected, () => selectCurrency(c));
             });
         }
 
@@ -8704,7 +8747,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
 
         // كل دالة تشغيل بمعزل: لو وحدة فشلت (بيانات قديمة بالمتصفح مثلاً) ما توقف الباقي وما تعلّق شاشة الترحيب
-        [initTheme, applyAppearanceSettings, prepareGoogle, loadTickerSettings, loadAnnouncement,
+        [initTheme, loadSidebarSupportIcons, applyAppearanceSettings, prepareGoogle, loadTickerSettings, loadAnnouncement,
          loadSplashScreen, checkSavedSession, loadBanners, initData].forEach(function (fn) {
             try {
                 var r = fn();
@@ -11804,7 +11847,7 @@ ADMIN_HTML_CONTENT = """
                 </div>
                 <div class="form-group">
                     <label>3. حدد المنتج التابع له:</label>
-                    <select id="subCatProductSelect"></select>
+                    <select id="subCatProductSelect" onchange="updateSubCatGroupSelect()"></select>
                 </div>
                 <div class="form-group">
                     <label>4. اختر المزود API (اختياري):</label>
@@ -19717,6 +19760,7 @@ ADMIN_HTML_CONTENT = """
             box-shadow: 0 22px 44px -14px rgba(0,0,0,0.85), inset 0 1px 0 rgba(255,255,255,0.06);
         }
         body.light-mode-admin .admin-dock { background: rgba(255,255,255,0.9); box-shadow: 0 18px 38px -16px rgba(80,60,20,0.4); }
+        body.dock-hidden .admin-dock { display: none !important; }
         .dk-btn {
             background: none; border: 0; color: var(--muted); cursor: pointer;
             display: flex; flex-direction: column; align-items: center; gap: 4px;
@@ -19789,6 +19833,35 @@ ADMIN_HTML_CONTENT = """
         }
     </style>
 <script>
+/* إخفاء الشريط السفلي تلقائياً عند فتح أي شاشة كاملة أو نافذة */
+(function () {
+    var SEL = ['.modal-overlay.active', '#clientsListScreen', '#clientDetailScreen', '#allOrdersScreen',
+        '#inventoryScreen', '#apiClientsScreen', '#apiImportScreen', '#importedSectionsScreen',
+        '#checkOrdersPage', '#checkDepositsPage', '#autoDepositAdminScreen', '#autoDepositHistoryScreen',
+        '#tgNotifyScreen', '#adminAccountsScreen'];
+    var queued = false;
+    function isShown(el) {
+        if (!el) return false;
+        var cs = window.getComputedStyle(el);
+        return cs.display !== 'none' && cs.visibility !== 'hidden' && el.getClientRects().length > 0;
+    }
+    function check() {
+        queued = false;
+        var open = false;
+        for (var i = 0; i < SEL.length && !open; i++) {
+            var list = document.querySelectorAll(SEL[i]);
+            for (var j = 0; j < list.length; j++) { if (isShown(list[j])) { open = true; break; } }
+        }
+        document.body.classList.toggle('dock-hidden', open);
+    }
+    function schedule() { if (!queued) { queued = true; requestAnimationFrame(check); } }
+    function start() {
+        new MutationObserver(schedule).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+        schedule();
+    }
+    if (document.body) start(); else document.addEventListener('DOMContentLoaded', start);
+})();
+
 /* عدّادات الشريط السفلي: طلبات وإيداعات معلّقة */
 window.updateDockBadges = function (deposits, orders) {
     function set(id, n) {
