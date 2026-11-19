@@ -3283,10 +3283,23 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             transition: opacity 0.4s ease, visibility 0.4s ease;
         }
         #splashScreen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-        .splash-logo {
-            width: 130px; height: 130px; object-fit: cover; border-radius: 50%;
-            border: 2px solid var(--border-color); box-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+        .splash-loader { position: relative; width: 176px; height: 176px; display: flex; align-items: center; justify-content: center; }
+        .splash-ring { position: absolute; border-radius: 50%; border: 3px solid transparent; }
+        .splash-ring.outer {
+            inset: 0; border-top-color: var(--accent-color); border-right-color: rgba(56, 189, 248, 0.28);
+            filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55)); animation: spin 1.25s linear infinite;
         }
+        .splash-ring.inner {
+            inset: 15px; border-bottom-color: #4ade80; border-left-color: rgba(74, 222, 128, 0.28);
+            filter: drop-shadow(0 0 6px rgba(74, 222, 128, 0.5)); animation: spin 1.7s linear infinite reverse;
+        }
+        .splash-core { position: absolute; inset: 32px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #1d1d24 0%, #0a0a0e 100%); box-shadow: 0 0 22px rgba(56, 189, 248, 0.18); }
+        .splash-logo {
+            position: relative; width: 112px; height: 112px; object-fit: cover; border-radius: 50%;
+            box-shadow: 0 0 22px rgba(56, 189, 248, 0.3); animation: splashPulse 2.2s ease-in-out infinite;
+        }
+        @keyframes splashPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.045); } }
+        @media (prefers-reduced-motion: reduce) { .splash-logo { animation: none; } .splash-ring.outer { animation-duration: 2.4s; } .splash-ring.inner { animation-duration: 3.2s; } }
         .splash-spinner {
             width: 42px; height: 42px; border: 3px solid rgba(255, 255, 255, 0.1);
             border-top: 3px solid var(--accent-color); border-radius: 50%; animation: spin 0.9s linear infinite;
@@ -3327,7 +3340,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         @keyframes logoSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         #splashVideo { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
-        #splashScreen.has-video .splash-logo, #splashScreen.has-video .splash-spinner { display: none !important; }
+        #splashScreen.has-video .splash-loader, #splashScreen.has-video .splash-logo, #splashScreen.has-video .splash-spinner { display: none !important; }
 
         .ann-overlay {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10050;
@@ -3602,19 +3615,30 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
         .search-container { width: 100%; }
         .search-input {
-            width: 100%; padding: 9px 38px 9px 12px; background-color: var(--input-bg);
+            width: 100%; padding: 9px 38px 9px 12px; background-color: #212121;
             border: 1px solid transparent; border-radius: 999px;
             color: var(--text-color); font-size: 0.8rem; outline: none; transition: border-color 0.2s;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7.5'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b3b3b3' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7.5'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
             background-repeat: no-repeat; background-position: left 14px center; background-size: 16px 16px;
             padding-left: 40px; padding-right: 16px;
         }
-        .search-input::placeholder { color: var(--subtext-color); opacity: 1; }
+        .search-input::placeholder { color: #b3b3b3; opacity: 1; }
         body.light-mode .search-input { background-color: #e9ecee; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7.5'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E"); }
         body.light-mode .search-input::placeholder { color: #6b7280; }
         .search-input:focus { border-color: var(--accent-color); }
 
         .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px 12px; padding: 10px 5px; }
+        .skel-card { display: flex; flex-direction: column; align-items: center; width: 100%; }
+        .skel-img, .skel-label {
+            background-color: rgba(128,128,128,0.16);
+            background-image: linear-gradient(100deg, rgba(128,128,128,0) 30%, rgba(160,160,160,0.28) 50%, rgba(128,128,128,0) 70%);
+            background-size: 220% 100%; background-repeat: no-repeat; background-position: 130% 0;
+            animation: skelShimmer 1.3s ease-in-out infinite;
+        }
+        .skel-img { width: 100%; aspect-ratio: 1 / 1; border-radius: 14px; }
+        .skel-label { width: 62%; height: 12px; border-radius: 999px; margin-top: 10px; }
+        @keyframes skelShimmer { to { background-position: -130% 0; } }
+        @media (prefers-reduced-motion: reduce) { .skel-img, .skel-label { animation: none; } }
         .empty-state { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 48px 20px; color: var(--subtext-color); text-align: center; }
         .empty-state svg { width: 84px; height: 84px; opacity: .9; }
         .empty-state span { font-size: 0.92rem; font-weight: 700; }
@@ -3673,6 +3697,8 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
         }
         .cur-opt:active { background: rgba(16,185,129,0.2); }
         .cur-opt.selected { background: rgba(16,185,129,0.24); border-color: rgba(16,185,129,0.55); font-weight: 800; }
+        .cur-row { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
+        .cur-row::before, .cur-row::after { content: ""; flex: 1; height: 1px; background: var(--border-color); }
         .sidebar .cur-wrap { flex-direction: column; align-items: center; margin: 12px 0 0; width: 100%; }
         .sidebar .cur-panel { position: static; width: 100%; margin-top: 8px; box-shadow: none; }
         .sidebar .cur-list { max-height: 50vh; }
@@ -4696,9 +4722,13 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 setTimeout(hide, 25000);
             })();
         </script>
-        <img id="splashImg" src="" class="splash-logo" style="display:none;" />
+        <div class="splash-loader" id="splashLoader">
+            <span class="splash-ring outer"></span>
+            <span class="splash-ring inner"></span>
+            <span class="splash-core"></span>
+            <img id="splashImg" src="" class="splash-logo" style="display:none;" />
+        </div>
         <video id="splashVideo" muted playsinline autoplay preload="auto" style="display:none;"></video>
-        <div class="splash-spinner"></div>
     </div>
 
     <div class="cpm-welcome-msg" id="welcomeMessage">أهلا وسهلا فيك بموقعنا</div>
@@ -4799,10 +4829,12 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 </div>
             </div>
             <div class="cur-wrap" id="curWrap">
-                <button type="button" class="cur-pill" id="currencySelectorBox" onclick="toggleCurrencyDropdown(event)" aria-haspopup="listbox" aria-expanded="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                    <span>العملة <span id="currentCurrencyLabel" dir="auto">USD</span></span>
-                </button>
+                <div class="cur-row">
+                    <button type="button" class="cur-pill" id="currencySelectorBox" onclick="toggleCurrencyDropdown(event)" aria-haspopup="listbox" aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        <span>العملة <span id="currentCurrencyLabel" dir="auto">USD</span></span>
+                    </button>
+                </div>
                 <div class="cur-panel" id="currencyDropdown" role="listbox">
                     <div id="currencyOptionsList" class="cur-list"></div>
                 </div>
@@ -4988,7 +5020,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 </div>
                 <button class="back-btn" id="backBtn" onclick="goBack()">رجوع</button>
             </div>
-            <div class="grid-container" id="userGrid"></div>
+            <div class="grid-container" id="userGrid"><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div><div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div></div>
         </div>
     </div>
 
@@ -6519,7 +6551,7 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 subcategoryGroups = sg;
                 await loadCurrencies();
             }).catch(e => console.error(e));
-            window._restDataPromise = pRest;
+            window._restDataPromise = pRest.finally(() => { window._restDone = true; });
             try {
                 dataStore.categories = await pCats;
             } catch (e) { console.error(e); }
@@ -7086,6 +7118,10 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
             }
         }
 
+        const SKELETON_CARD = '<div class="skel-card"><div class="skel-img"></div><div class="skel-label"></div></div>';
+        function skeletonGridHTML(n = 9) { return SKELETON_CARD.repeat(n); }
+        window._restDone = false;
+
         const EMPTY_BOX_SVG = '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 28 32 38 54 28 32 18z"/><path d="M10 28v20l22 10V38"/><path d="M54 28v20L32 58"/><path d="M10 28 5 17l22-9 5 10"/><path d="M54 28l5-11L37 8l-5 10"/></svg>';
         function emptyStateHTML(filterQuery) {
             return '<div class="empty-state">' + EMPTY_BOX_SVG + '<span>' + (filterQuery ? 'لا توجد نتائج مطابقة' : 'غير متوفر') + '</span></div>';
@@ -7122,7 +7158,10 @@ USER_HTML_CONTENT = """<!DOCTYPE html>
                 if (catOff) card.classList.add('sub-unavailable');
                 card.onclick = async () => {
                     if (catOff) { showTopNotification(MSG_UNAVAILABLE); return; }
-                    if (window._restDataPromise) await window._restDataPromise;
+                    if (window._restDataPromise && !window._restDone) {
+                        grid.innerHTML = skeletonGridHTML();
+                        await window._restDataPromise;
+                    }
                     openProductsView(name);
                 };
 
@@ -8982,7 +9021,10 @@ ADMIN_HTML_CONTENT = """
         .delete-mode-btn { flex: 1; padding: 8px; background-color: #121212; border: 1px solid #27272a; border-radius: 8px; color: #a1a1aa; font-size: 0.8rem; font-weight: 700; cursor: pointer; text-align: center; transition: all 0.2s; }
         body.light-mode-admin .delete-mode-btn { background-color: #f4f4f5; border-color: #e4e4e7; }
         .delete-mode-btn.active { background-color: #2563eb; color: #fff; border-color: #2563eb; }
-        .currency-list-item { background-color: #121212; border: 1px solid #27272a; border-radius: 10px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; }
+        .currency-list-item { background-color: #121212; border: 1px solid #27272a; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; align-items: stretch; gap: 10px; }
+        .currency-list-item .cur-item-actions { display: flex; justify-content: center; align-items: center; gap: 10px; border-top: 1px solid #27272a; padding-top: 10px; }
+        .currency-list-item .cur-item-actions button { min-width: 84px; }
+        body.light-mode-admin .currency-list-item .cur-item-actions { border-top-color: #e4e4e7; }
         body.light-mode-admin .currency-list-item { background-color: #ffffff; border-color: #e4e4e7; }
         .counter-badge { display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #000; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
         .group-badge-admin { display: inline-block; background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%); color: #fff; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-right: 4px; }
@@ -15156,7 +15198,7 @@ ADMIN_HTML_CONTENT = """
                             <div style="font-size:0.85rem; font-weight:700; color:#fff;">${c.name} (${c.symbol})</div>
                             <div style="font-size:0.72rem; color:#a1a1aa;">سعر الصرف: ${c.exchange_rate}</div>
                         </div>
-                        <div style="display:flex; gap:6px; flex-shrink:0;">
+                        <div class="cur-item-actions">
                             <button onclick="startEditCurrency(${idx})" style="background:#2563eb; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:0.72rem; font-weight:700; cursor:pointer; width:auto;">تعديل</button>
                             <button onclick="deleteCurrency(${idx})" style="background:#dc2626; color:#fff; border:none; border-radius:6px; padding:6px 10px; font-size:0.72rem; font-weight:700; cursor:pointer; width:auto;">حذف</button>
                         </div>
