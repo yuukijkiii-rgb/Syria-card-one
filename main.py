@@ -19,6 +19,7 @@ import sqlite3
 import atexit
 import tempfile
 import shutil
+import ipaddress
 
 # Web Push (إشعارات النظام) تحتاج مكتبة cryptography. إذا ما كانت موجودة يشتغل الباقي عادي بدونها.
 try:
@@ -9805,6 +9806,9 @@ ADMIN_HTML_CONTENT = """
 <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
 <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></symbol>
 <symbol id="i-inventory" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></symbol>
+<symbol id="i-hash" viewBox="0 0 24 24"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></symbol>
+<symbol id="i-log-in" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></symbol>
+<symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></symbol>
 <symbol id="i-bar-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
 <symbol id="i-line-chart" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></symbol>
 <symbol id="i-pie-chart" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
@@ -10252,6 +10256,8 @@ ADMIN_HTML_CONTENT = """
             <div class="aa-list" id="adminAccountsList"></div>
             <div class="aa-log-title">آخر العمليات</div>
             <div class="aa-log" id="adminAccountsLog"></div>
+            <div class="aa-log-title">سجل دخول الأدمن (مع الـ IP)</div>
+            <div class="aa-log" id="adminLoginsLog"></div>
         </div>
 
         <div class="modal-overlay" id="adminAccountModalOverlay">
@@ -12239,45 +12245,89 @@ ADMIN_HTML_CONTENT = """
             </div>
         </div>
 
-        <div id="fullClientInspectScreen" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#050508; z-index:9999; overflow-y:auto; padding:20px; flex-direction:column; gap:15px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #27272a; padding-bottom:10px;">
-                <span style="font-size:1.1rem; font-weight:800; color:#38bdf8;" id="inspectHeaderTitle">تقرير حساب العميل</span>
-                <button class="btn-secondary" style="padding:6px 14px;" onclick="closeFullClientInspect()">إغلاق</button>
-            </div>
-
-            <div style="background:#121212; border:1px solid #27272a; border-radius:12px; padding:15px; display:flex; flex-direction:column; gap:10px;">
-                <div style="font-size:0.9rem; font-weight:700; color:#a1a1aa;">المخطط البياني (مشتريات ومصروفات)</div>
-                <div style="display:flex; align-items:flex-end; gap:20px; height:150px; padding:15px; background:#000; border-radius:8px; border:1px solid #27272a; justify-content:space-around;">
-                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end;">
-                        <span id="chartPurchasesLabel" style="font-size:0.75rem; color:#4ade80; font-weight:700;">0$</span>
-                        <div id="chartPurchasesBar" style="width:35px; background:#22c55e; border-radius:6px 6px 0 0; min-height:4px; height:10%;"></div>
-                        <span style="font-size:0.7rem; color:#fff;">المشتريات</span>
-                    </div>
-                    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end;">
-                        <span id="chartDepositsLabel" style="font-size:0.75rem; color:#38bdf8; font-weight:700;">0$</span>
-                        <div id="chartDepositsBar" style="width:35px; background:#0284c7; border-radius:6px 6px 0 0; min-height:4px; height:10%;"></div>
-                        <span style="font-size:0.7rem; color:#fff;">المصروفات</span>
-                    </div>
+        <style>
+        #fullClientInspectScreen{--c-bg:#000;--c-s1:#0b0b0b;--c-s2:#161616;--c-ln:#272727;--c-ln2:#454545;--c-tx:#fafafa;--c-mu:#8f8f8f;--c-inv:#000;display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:var(--c-bg);color:var(--c-tx);z-index:9999;overflow-y:auto;flex-direction:column}
+        body.light-mode-admin #fullClientInspectScreen{--c-bg:#fff;--c-s1:#fafafa;--c-s2:#efefef;--c-ln:#dedede;--c-ln2:#b5b5b5;--c-tx:#0a0a0a;--c-mu:#6a6a6a;--c-inv:#fff}
+        #fullClientInspectScreen .ic{width:1.1em;height:1.1em;stroke:currentColor;fill:none;color:inherit;filter:none}
+        .ci-top{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:var(--c-bg);border-bottom:1px solid var(--c-ln)}
+        .ci-top-t{display:flex;align-items:center;gap:10px;font-weight:900;font-size:1rem;letter-spacing:.04em}
+        .ci-top-t small{display:block;font-weight:600;font-size:.68rem;color:var(--c-mu);letter-spacing:.14em;margin-top:2px}
+        .ci-ibtn{width:38px;height:38px;border-radius:50%;border:1px solid var(--c-ln2);background:transparent;color:var(--c-tx);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;font-size:1rem}
+        .ci-ibtn:active{background:var(--c-tx);color:var(--c-inv)}
+        .ci-wrap{width:100%;max-width:780px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:18px}
+        .ci-card{background:var(--c-s1);border:1px solid var(--c-ln);border-radius:20px;padding:18px}
+        .ci-card.lux{box-shadow:0 0 0 4px var(--c-bg),0 0 0 5px var(--c-ln2)}
+        .ci-hero{display:flex;gap:14px;align-items:center}
+        .ci-av{flex:0 0 66px;height:66px;border-radius:50%;border:2px solid var(--c-tx);display:flex;align-items:center;justify-content:center;font-size:1.7rem;font-weight:900;box-shadow:0 0 0 4px var(--c-bg),0 0 0 5px var(--c-ln2)}
+        .ci-mail{font-weight:800;font-size:1.02rem;word-break:break-all;direction:ltr;text-align:right}
+        .ci-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+        .ci-chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--c-ln2);border-radius:999px;padding:3px 10px;font-size:.68rem;font-weight:700;color:var(--c-mu)}
+        .ci-chip.on{color:var(--c-tx);border-color:var(--c-tx)}
+        .ci-bal{margin-top:16px;padding-top:16px;border-top:1px dashed var(--c-ln2);display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+        .ci-bal-l{font-size:.72rem;color:var(--c-mu);letter-spacing:.14em;font-weight:700}
+        .ci-bal-v{font-size:2.3rem;font-weight:900;line-height:1;direction:ltr;letter-spacing:.02em}
+        .ci-sec{display:flex;align-items:center;gap:8px;font-size:.78rem;letter-spacing:.14em;color:var(--c-mu);font-weight:800;margin-bottom:12px}
+        .ci-sec::after{content:"";flex:1;height:1px;background:var(--c-ln)}
+        .ci-ipmain{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--c-ln2);border-radius:14px;padding:14px 16px;background:var(--c-bg)}
+        .ci-ipval{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:1.45rem;font-weight:800;direction:ltr;letter-spacing:.06em;word-break:break-all}
+        .ci-note{font-size:.74rem;color:var(--c-mu);line-height:1.7;margin-top:10px}
+        .ci-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+        @media(min-width:620px){.ci-grid{grid-template-columns:repeat(3,1fr)}}
+        .ci-stat{border:1px solid var(--c-ln);border-radius:14px;padding:14px;background:var(--c-bg)}
+        .ci-stat .k{display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--c-mu);font-weight:700}
+        .ci-stat .v{margin-top:8px;font-size:1.25rem;font-weight:900;direction:ltr;text-align:right}
+        .ci-barrow{margin-bottom:14px}
+        .ci-barhead{display:flex;justify-content:space-between;align-items:center;font-size:.8rem;font-weight:700;margin-bottom:6px}
+        .ci-barhead span{display:inline-flex;align-items:center;gap:6px}
+        .ci-barhead b{direction:ltr}
+        .ci-track{height:10px;border-radius:99px;background:var(--c-s2);border:1px solid var(--c-ln);overflow:hidden}
+        .ci-fill{height:100%;background:var(--c-tx);border-radius:99px}
+        .ci-seg{display:flex;height:14px;border-radius:99px;overflow:hidden;border:1px solid var(--c-ln2);background:var(--c-s2)}
+        .ci-seg i{display:block;height:100%}
+        .ci-s-done{background:var(--c-tx)}
+        .ci-s-pend{background:var(--c-mu)}
+        .ci-s-chk{background:var(--c-ln2)}
+        .ci-s-rej{background:repeating-linear-gradient(45deg,var(--c-mu) 0 3px,transparent 3px 6px)}
+        .ci-legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;font-size:.72rem;color:var(--c-mu)}
+        .ci-legend span{display:inline-flex;align-items:center;gap:6px}
+        .ci-legend em{width:12px;height:12px;border-radius:3px;border:1px solid var(--c-ln2);display:inline-block}
+        .ci-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;border-bottom:1px dashed var(--c-ln);font-size:.84rem}
+        .ci-row:last-child{border-bottom:none}
+        .ci-row .k{display:flex;align-items:center;gap:8px;color:var(--c-mu);font-weight:700;font-size:.78rem}
+        .ci-row .v{font-weight:800;direction:ltr;text-align:right;word-break:break-all}
+        .ci-hist{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+        .ci-hrow{display:grid;grid-template-columns:1.3fr 1fr 1fr 42px;gap:8px;align-items:center;border:1px solid var(--c-ln);border-radius:12px;padding:10px 12px;font-size:.72rem;background:var(--c-bg)}
+        .ci-hrow.head{border:none;background:transparent;color:var(--c-mu);font-weight:800;letter-spacing:.08em;padding:0 12px}
+        .ci-hrow .ip{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:800;direction:ltr;text-align:right}
+        .ci-hrow .t{direction:ltr;text-align:right;color:var(--c-mu)}
+        .ci-hrow .n{text-align:center;font-weight:900}
+        .ci-list{display:flex;flex-direction:column;gap:8px}
+        .ci-item{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--c-ln);border-radius:12px;padding:11px 13px;background:var(--c-bg)}
+        .ci-item .l{min-width:0}
+        .ci-item .l b{display:block;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .ci-item .l small{display:block;font-size:.68rem;color:var(--c-mu);margin-top:3px;direction:ltr;text-align:right}
+        .ci-item .r{text-align:left;flex-shrink:0}
+        .ci-item .r b{display:block;font-weight:900;direction:ltr;font-size:.88rem}
+        .ci-item .r span{display:inline-flex;align-items:center;gap:4px;font-size:.66rem;color:var(--c-mu);font-weight:700;margin-top:3px}
+        .ci-empty{text-align:center;color:var(--c-mu);font-size:.8rem;padding:14px}
+        .ci-btn{width:100%;padding:14px;border-radius:14px;border:1px solid var(--c-tx);background:var(--c-tx);color:var(--c-inv);font-weight:900;font-size:.95rem;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;font-family:inherit}
+        .ci-btn:active{transform:scale(.99)}
+        .ci-togrow{display:flex;justify-content:space-between;align-items:center;border:1px solid var(--c-ln);border-radius:14px;padding:13px 16px;background:var(--c-s1);font-weight:800;font-size:.88rem}
+        .ci-togrow span{display:inline-flex;align-items:center;gap:8px}
+        .ci-sw{-webkit-appearance:none;appearance:none;position:relative;width:48px !important;height:26px !important;padding:0 !important;border-radius:99px;border:1px solid var(--c-ln2);background:var(--c-s2);cursor:pointer;outline:none;margin:0;transition:background .15s}
+        .ci-sw::after{content:"";position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:var(--c-mu);transition:transform .15s,background .15s}
+        .ci-sw:checked{background:var(--c-tx) !important;border-color:var(--c-tx) !important}
+        .ci-sw:checked::after{background:var(--c-inv);transform:translateX(-22px)}
+        </style>
+        <div id="fullClientInspectScreen">
+            <div class="ci-top">
+                <div class="ci-top-t"><svg class="ic"><use href="#i-shield"/></svg><div><span id="inspectHeaderTitle">كشف العميل</span><small>CLIENT DOSSIER</small></div></div>
+                <div style="display:flex;gap:8px;">
+                    <button class="ci-ibtn" title="تحديث" onclick="ciRefresh()"><svg class="ic"><use href="#i-refresh"/></svg></button>
+                    <button class="ci-ibtn" title="إغلاق" onclick="closeFullClientInspect()"><svg class="ic"><use href="#i-x"/></svg></button>
                 </div>
-                <div style="display:flex; justify-content:space-between; font-size:0.8rem; color:#a1a1aa; padding-top:4px;">
-                    <span>الرصيد الحالي: <b id="inspectUserBalance" style="color:#4ade80;">0$</b></span>
-                    <span>رقم الحساب: <b id="inspectUserId" style="color:#38bdf8;">#</b></span>
-                </div>
             </div>
-
-            <hr style="border-color:#27272a; margin:5px 0;">
-
-            <div style="display:flex; flex-direction:column; gap:12px;">
-                <button class="save-btn" style="background:#2563eb; padding:14px; font-size:0.95rem;" onclick="loginAsClientDirectly()">دخول الى حساب العميل</button>
-                
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#121212; border:1px solid #27272a; padding:12px 16px; border-radius:12px;">
-                    <span style="font-size:0.9rem; font-weight:700;">تفعيل خانة API</span>
-                    <label class="toggle-switch" style="position:relative; display:inline-block; width:50px; height:26px;">
-                        <input type="checkbox" id="inspectApiToggle" onchange="toggleClientApiStatus(this.checked)">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
+            <div class="ci-wrap" id="ciBody"></div>
         </div>
 
         <div id="appearanceFullScreen" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#0a0a12; z-index:99999; overflow-y:auto; flex-direction:column;">
@@ -12838,6 +12888,7 @@ ADMIN_HTML_CONTENT = """
                 adminPermCatalog = d.perms || [];
                 renderAdminAccounts();
                 renderAdminLog(d.log || []);
+                renderAdminLogins(d.logins || []);
             } catch (e) { box.innerHTML = '<div class="aa-empty">تعذر الاتصال بالسيرفر</div>'; }
         }
 
@@ -12873,11 +12924,23 @@ ADMIN_HTML_CONTENT = """
             box.innerHTML = html;
         }
 
+        function renderAdminLogins(list) {
+            var box = document.getElementById('adminLoginsLog');
+            if (!box) return;
+            if (!list.length) { box.innerHTML = '<div class="aa-empty">ما في محاولات دخول مسجّلة لسا.</div>'; return; }
+            box.innerHTML = list.slice(0, 100).map(function (r) {
+                var who = r.ok ? (r.who || r.email) : r.email;
+                return '<div class="aa-log-row"><div><b>' + aaEsc(who) + '</b> - ' + (r.ok ? 'دخول ناجح' : 'محاولة فاشلة') + (r.auto ? ' (تلقائي)' : '')
+                    + ' <span style="direction:ltr;display:inline-block;">IP: ' + aaEsc(r.ip || '-') + '</span>'
+                    + (r.ok ? '' : ' <span>(' + aaEsc(r.reason || '') + ')</span>') + '</div><span class="aa-t">' + aaEsc(aaFmtTime(r.t)) + '</span></div>';
+            }).join('');
+        }
+
         function renderAdminLog(log) {
             var box = document.getElementById('adminAccountsLog');
             if (!log.length) { box.innerHTML = '<div class="aa-empty">ما في عمليات مسجّلة لسا.</div>'; return; }
             box.innerHTML = log.slice(0, 60).map(function (r) {
-                return '<div class="aa-log-row"><div><b>' + aaEsc(r.who) + '</b> - ' + aaEsc(r.act) + (r.d ? ' <span>(' + aaEsc(r.d) + ')</span>' : '') + '</div><span class="aa-t">' + aaEsc(aaFmtTime(r.t)) + '</span></div>';
+                return '<div class="aa-log-row"><div><b>' + aaEsc(r.who) + '</b> - ' + aaEsc(r.act) + (r.d ? ' <span>(' + aaEsc(r.d) + ')</span>' : '') + (r.ip ? ' <span style="direction:ltr;display:inline-block;">IP: ' + aaEsc(r.ip) + '</span>' : '') + '</div><span class="aa-t">' + aaEsc(aaFmtTime(r.t)) + '</span></div>';
             }).join('');
         }
 
@@ -18346,41 +18409,173 @@ ADMIN_HTML_CONTENT = """
         async function executeClientInspection() {
             const query = document.getElementById('inspectUserIdentifier').value.trim();
             if (!query) { alert('يرجى كتابة الإيميل أو رقم الحساب!'); return; }
-
-            const res = await fetch('/api/inspect_client', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ identifier: query })
-            });
-
-            const data = await res.json();
+            let data;
+            try {
+                const res = await fetch('/api/inspect_client', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: query })
+                });
+                data = await res.json();
+            } catch (e) { alert('تعذر الاتصال بالخادم'); return; }
             if (data.status === 'success') {
                 inspectedClientData = data;
                 closeModal('clientInspectModal');
-                
-                document.getElementById('inspectHeaderTitle').innerText = 'كشف العميل: ' + data.email;
-                document.getElementById('inspectUserBalance').innerText = formatBalance(data.balance) + ' $';
-                document.getElementById('inspectUserId').innerText = '#' + data.id;
-                
-                const totalSpent = data.total_spent || 0;
-                const totalDep = data.total_deposits || 0;
-                const maxVal = Math.max(totalSpent, totalDep, 1);
-                
-                document.getElementById('chartPurchasesLabel').innerText = formatBalance(totalSpent) + '$';
-                document.getElementById('chartDepositsLabel').innerText = formatBalance(totalDep) + '$';
-                
-                document.getElementById('chartPurchasesBar').style.height = `${Math.min(100, Math.max(10, (totalSpent / maxVal) * 100))}%`;
-                document.getElementById('chartDepositsBar').style.height = `${Math.min(100, Math.max(10, (totalDep / maxVal) * 100))}%`;
-
-                document.getElementById('inspectApiToggle').checked = data.api_enabled || false;
-                document.getElementById('fullClientInspectScreen').style.display = 'flex';
+                renderClientInspect(data);
+                const scr = document.getElementById('fullClientInspectScreen');
+                scr.style.display = 'flex';
+                scr.scrollTop = 0;
             } else {
                 alert(data.message || 'تعذر العثور على المستخدم!');
             }
         }
 
+        function ciRefresh() {
+            if (!inspectedClientData) return;
+            document.getElementById('inspectUserIdentifier').value = inspectedClientData.email;
+            executeClientInspection();
+        }
+
         function closeFullClientInspect() {
             document.getElementById('fullClientInspectScreen').style.display = 'none';
+        }
+
+        function ciEsc(v) {
+            return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+        function ciV(v) { return (v === undefined || v === null || v === '') ? '—' : ciEsc(v); }
+        function ciMoney(n) { n = Number(n) || 0; return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 }); }
+        function ciIc(name) { return '<svg class="ic"><use href="#i-' + name + '"/></svg>'; }
+
+        function ciCopy(txt, btn) {
+            if (!txt) return;
+            const done = function () { if (btn) { btn.innerHTML = ciIc('check'); setTimeout(function () { btn.innerHTML = ciIc('copy'); }, 1200); } };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(done, done);
+            } else {
+                const t = document.createElement('textarea');
+                t.value = txt; document.body.appendChild(t); t.select();
+                try { document.execCommand('copy'); } catch (e) {}
+                document.body.removeChild(t); done();
+            }
+        }
+
+        function ciStat(icon, label, val) {
+            return '<div class="ci-stat"><div class="k">' + ciIc(icon) + '<span>' + label + '</span></div><div class="v">' + val + '</div></div>';
+        }
+        function ciRow(icon, label, val) {
+            return '<div class="ci-row"><span class="k">' + ciIc(icon) + label + '</span><span class="v">' + val + '</span></div>';
+        }
+        function ciBar(label, val, icon, maxV) {
+            const w = Math.max(2, Math.min(100, (val / maxV) * 100));
+            return '<div class="ci-barrow"><div class="ci-barhead"><span>' + ciIc(icon) + label + '</span><b>' + ciMoney(val) + ' $</b></div><div class="ci-track"><div class="ci-fill" style="width:' + w + '%"></div></div></div>';
+        }
+        function ciOrderState(k) {
+            if (k === 'done') return ciIc('check-circle') + 'مكتمل';
+            if (k === 'rejected') return ciIc('x-circle') + 'مرفوض - أُعيد المبلغ';
+            if (k === 'check') return ciIc('search') + 'قيد التشيك';
+            return ciIc('hourglass') + 'قيد الانتظار';
+        }
+        function ciDepState(st) {
+            if (st === 'مقبول') return ciIc('check-circle') + 'مقبول';
+            if (st === 'مرفوض') return ciIc('x-circle') + 'مرفوض';
+            return ciIc('hourglass') + 'قيد التدقيق';
+        }
+
+        function renderClientInspect(d) {
+            document.getElementById('inspectHeaderTitle').innerText = 'كشف العميل #' + d.id;
+            const maxV = Math.max(d.total_spent || 0, d.total_deposits || 0, d.admin_added || 0, 1);
+            const tot = Math.max(d.orders_total || 0, 1);
+            const seg = function (n, cls) { return n > 0 ? '<i class="' + cls + '" style="width:' + ((n / tot) * 100) + '%"></i>' : ''; };
+            let h = '';
+
+            // ---- الهوية والرصيد ----
+            h += '<div class="ci-card lux"><div class="ci-hero"><div class="ci-av">' + ciEsc((d.email || '?').charAt(0).toUpperCase()) + '</div><div style="min-width:0;flex:1;">'
+                + '<div class="ci-mail">' + ciEsc(d.email) + '</div><div class="ci-chips">'
+                + '<span class="ci-chip on">' + ciIc('hash') + ciEsc(d.id) + '</span>'
+                + '<span class="ci-chip">' + ciIc(d.auth_provider === 'google' ? 'globe' : 'mail') + (d.auth_provider === 'google' ? 'Google' : 'إيميل') + '</span>'
+                + '<span class="ci-chip ' + (d.api_enabled ? 'on' : '') + '">' + ciIc('plug') + 'API ' + (d.api_enabled ? 'مفعّل' : 'غير مفعّل') + '</span>'
+                + '<span class="ci-chip ' + (d.telegram_linked ? 'on' : '') + '">' + ciIc('send') + (d.telegram_linked ? ('تلغرام ' + ciEsc(d.telegram_username ? '@' + d.telegram_username : '')) : 'تلغرام غير مربوط') + '</span>'
+                + '</div></div></div>'
+                + '<div class="ci-bal"><div><div class="ci-bal-l">الرصيد الحالي</div></div><div class="ci-bal-v">' + ciMoney(d.balance) + ' $</div></div></div>';
+
+            // ---- الـ IP ----
+            const ipTxt = d.last_ip ? ciEsc(d.last_ip) : 'غير متوفر';
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('globe') + 'عنوان الـ IP</div>'
+                + '<div class="ci-ipmain"><div><div class="ci-bal-l" style="margin-bottom:6px;">آخر IP مسجّل</div><div class="ci-ipval">' + ipTxt + '</div></div>'
+                + (d.last_ip ? '<button class="ci-ibtn" title="نسخ" data-v="' + ciEsc(d.last_ip) + '" onclick="ciCopy(this.dataset.v, this)">' + ciIc('copy') + '</button>' : '')
+                + '</div>'
+                + ciRow('clock', 'آخر ظهور', ciV(d.last_seen))
+                + ciRow('log-in', 'IP التسجيل', ciV(d.signup_ip))
+                + ciRow('monitor', 'عدد العناوين المستخدمة', ciEsc((d.ip_history || []).length));
+            if ((d.ip_history || []).length) {
+                h += '<div class="ci-hist"><div class="ci-hrow head"><span>IP</span><span>أول ظهور</span><span>آخر ظهور</span><span style="text-align:center;">مرات</span></div>';
+                d.ip_history.forEach(function (x) {
+                    h += '<div class="ci-hrow"><span class="ip">' + ciEsc(x.ip) + '</span><span class="t">' + ciV(x.first) + '</span><span class="t">' + ciV(x.last) + '</span><span class="n">' + ciEsc(x.count || 1) + '</span></div>';
+                });
+                h += '</div>';
+            } else {
+                h += '<div class="ci-note">لا يوجد IP مسجّل لهذا العميل بعد. التسجيل يبدأ من أول دخول أو شراء أو تسجيل جديد بعد هذا التحديث، والحسابات القديمة تتعبّى تلقائياً أول ما يستخدمها صاحبها.</div>';
+            }
+            h += '</div>';
+
+            // ---- الأرقام المالية ----
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('wallet') + 'الملخص المالي</div><div class="ci-grid">'
+                + ciStat('bag', 'إجمالي المشتريات', ciMoney(d.total_spent) + ' $')
+                + ciStat('download', 'إجمالي الإيداعات', ciMoney(d.total_deposits) + ' $')
+                + ciStat('plus', 'شحن من الإدارة', ciMoney(d.admin_added) + ' $')
+                + ciStat('x', 'خصم من الإدارة', ciMoney(d.admin_deducted) + ' $')
+                + ciStat('refresh', 'مبالغ مُرجَعة', ciMoney(d.refunded) + ' $')
+                + ciStat('percent', 'نسبة الخصم', ciEsc(d.discount) + '%')
+                + '</div><div style="height:16px"></div>'
+                + ciBar('المشتريات', d.total_spent || 0, 'bag', maxV)
+                + ciBar('الإيداعات', d.total_deposits || 0, 'download', maxV)
+                + ciBar('شحن الإدارة', d.admin_added || 0, 'plus', maxV)
+                + '<div class="ci-note">المشتريات لا تشمل الطلبات المرفوضة لأن مبلغها يرجع للعميل.</div></div>';
+
+            // ---- الطلبات ----
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('receipt') + 'حالة الطلبات (' + ciEsc(d.orders_total) + ')</div>'
+                + '<div class="ci-seg">' + seg(d.orders_done, 'ci-s-done') + seg(d.orders_pending, 'ci-s-pend') + seg(d.orders_check, 'ci-s-chk') + seg(d.orders_rejected, 'ci-s-rej') + '</div>'
+                + '<div class="ci-legend"><span><em class="ci-s-done"></em>مكتمل ' + ciEsc(d.orders_done) + '</span><span><em class="ci-s-pend"></em>انتظار ' + ciEsc(d.orders_pending) + '</span><span><em class="ci-s-chk"></em>تشيك ' + ciEsc(d.orders_check) + '</span><span><em class="ci-s-rej"></em>مرفوض ' + ciEsc(d.orders_rejected) + '</span></div>'
+                + ciRow('calendar', 'أول طلب', ciV(d.first_order))
+                + ciRow('calendar', 'آخر طلب', ciV(d.last_order)) + '</div>';
+
+            // ---- بيانات الحساب ----
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('user') + 'بيانات الحساب</div>'
+                + ciRow('hash', 'رقم الحساب', ciV(d.id))
+                + ciRow('mail', 'الإيميل', ciV(d.email))
+                + ciRow('smartphone', 'الهاتف', ciV(d.phone))
+                + ciRow('calendar', 'تاريخ التسجيل', ciV(d.join_date))
+                + ciRow('coins', 'العملة', ciV(d.currency))
+                + ciRow('check-circle', 'الملف الشخصي', d.profile_completed ? 'مكتمل' : 'غير مكتمل')
+                + ciRow('credit-card', 'طلبات الإيداع', ciEsc(d.deposits_ok) + ' مقبول / ' + ciEsc(d.deposits_pending) + ' انتظار / ' + ciEsc(d.deposits_rejected) + ' مرفوض')
+                + '</div>';
+
+            // ---- آخر الطلبات ----
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('package') + 'آخر الطلبات</div>';
+            if ((d.recent_orders || []).length) {
+                h += '<div class="ci-list">' + d.recent_orders.map(function (o) {
+                    return '<div class="ci-item"><div class="l"><b>' + ciEsc(o.product) + (o.sub ? ' - ' + ciEsc(o.sub) : '') + '</b><small>' + ciEsc(o.ref) + ' | ' + ciEsc(o.ts) + '</small></div>'
+                        + '<div class="r"><b>' + ciMoney(o.price) + ' $</b><span>' + ciOrderState(o.status) + '</span></div></div>';
+                }).join('') + '</div>';
+            } else { h += '<div class="ci-empty">لا توجد طلبات</div>'; }
+            h += '</div>';
+
+            // ---- آخر الإيداعات ----
+            h += '<div class="ci-card"><div class="ci-sec">' + ciIc('wallet') + 'آخر الإيداعات</div>';
+            if ((d.recent_deposits || []).length) {
+                h += '<div class="ci-list">' + d.recent_deposits.map(function (x) {
+                    return '<div class="ci-item"><div class="l"><b>' + ciEsc(x.method) + '</b><small>' + ciEsc(x.ref) + ' | ' + ciEsc(x.ts) + '</small></div>'
+                        + '<div class="r"><b>' + ciMoney(x.amount) + ' $</b><span>' + ciDepState(x.status) + '</span></div></div>';
+                }).join('') + '</div>';
+            } else { h += '<div class="ci-empty">لا توجد إيداعات</div>'; }
+            h += '</div>';
+
+            // ---- إجراءات ----
+            h += '<button class="ci-btn" onclick="loginAsClientDirectly()">' + ciIc('log-in') + 'دخول إلى حساب العميل</button>'
+                + '<div class="ci-togrow"><span>' + ciIc('plug') + 'تفعيل خانة API</span><input type="checkbox" class="ci-sw" id="inspectApiToggle" ' + (d.api_enabled ? 'checked' : '') + ' onchange="toggleClientApiStatus(this.checked)"></div>';
+
+            document.getElementById('ciBody').innerHTML = h;
         }
 
         async function toggleClientApiStatus(isEnabled) {
@@ -22908,14 +23103,14 @@ def admin_session_get(token):
             ADMIN_SESSIONS.pop(token, None)
             return None
         if ss["role"] == "owner":
-            ctx = {"role": "owner", "aid": "owner", "name": "المدير", "perms": list(ADMIN_PERM_KEYS)}
+            ctx = {"role": "owner", "aid": "owner", "name": "المدير", "perms": list(ADMIN_PERM_KEYS), "ip": ss.get("ip", "")}
         else:
             acc = _find_subadmin(ss["aid"])
             if not acc or not acc.get("active", True):
                 ADMIN_SESSIONS.pop(token, None)
                 return None
             ctx = {"role": "sub", "aid": acc["id"], "name": acc.get("name", ""),
-                   "perms": [p for p in acc.get("perms", []) if p in ADMIN_PERM_KEYS]}
+                   "perms": [p for p in acc.get("perms", []) if p in ADMIN_PERM_KEYS], "ip": ss.get("ip", "")}
         ss["exp"] = now + ADMIN_SESSION_TTL
         return ctx
 
@@ -22991,6 +23186,7 @@ def google_login_process(d, user_ip):
             }
             save_json_file(USERS_FILE, USERS_DATA)
         u = USERS_DATA[key]
+        record_user_ip(key, user_ip, "signup" if created else "login")
         out = {"status": "success", "email": key, "balance": round(float(u.get("balance", 0)), 10),
                "user_id": u.get("id", 1001), "profile_completed": bool(u.get("profile_completed", False)),
                "new_user": created}
@@ -23003,16 +23199,127 @@ def google_login_process(d, user_ip):
     return out
 
 
+
+# ==================== عناوين الـ IP (دقيقة) وسجل دخول الأدمن ====================
+ADMIN_LOGIN_LOG_FILE = "admin_login_log.json"   # سجل كل محاولات دخول الأدمن (ناجحة وفاشلة) مع الـ IP
+ADMIN_LOGIN_LOG_MAX = 1000
+ADMIN_LOGIN_LOG = load_json_file(ADMIN_LOGIN_LOG_FILE, [])
+if not isinstance(ADMIN_LOGIN_LOG, list):
+    ADMIN_LOGIN_LOG = []
+USER_IP_HISTORY_MAX = 15
+
+
+def _clean_ip(v):
+    """يرجّع الـ IP بصيغة نظيفة (بدون بورت أو أقواس) أو '' إذا مو صالح."""
+    v = str(v or "").strip().strip("[]")
+    if not v:
+        return ""
+    if v.count(":") == 1 and "." in v:      # IPv4:port
+        v = v.split(":")[0]
+    try:
+        ip = ipaddress.ip_address(v)
+        if getattr(ip, "ipv4_mapped", None):
+            ip = ip.ipv4_mapped
+        return str(ip)
+    except Exception:
+        return ""
+
+
+def _is_public_ip(v):
+    try:
+        ip = ipaddress.ip_address(v)
+        return not (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast)
+    except Exception:
+        return False
+
+
+def resolve_client_ip(headers, peer_addr):
+    """
+    أدق IP للعميل. الأولوية لهيدرات البروكسي الموثوقة (Cloudflare/Render) ثم X-Forwarded-For
+    ثم عنوان الاتصال المباشر. يتجاهل العناوين الداخلية (10.x / 192.168.x / 127.x).
+    """
+    for name in ("CF-Connecting-IP", "True-Client-IP", "X-Real-IP"):
+        v = _clean_ip(headers.get(name, ""))
+        if v and _is_public_ip(v):
+            return v
+    chain = [_clean_ip(x) for x in str(headers.get("X-Forwarded-For", "") or "").split(",")]
+    chain = [x for x in chain if x]
+    for x in chain:
+        if _is_public_ip(x):
+            return x
+    if chain:
+        return chain[0]
+    return _clean_ip(peer_addr) or str(peer_addr or "غير معروف")
+
+
+def record_user_ip(email, ip, event="login"):
+    """يسجّل IP العميل: آخر IP، IP التسجيل، آخر ظهور، وسجل آخر العناوين المستخدمة."""
+    try:
+        u = USERS_DATA.get(email)
+        ip = _clean_ip(ip)
+        if not u or not ip:
+            return
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        changed = (u.get("last_ip") != ip)
+        prev_seen = str(u.get("last_seen") or "")
+        u["last_ip"] = ip
+        u["last_seen"] = now
+        u["last_event"] = event
+        if event == "signup" and not u.get("signup_ip"):
+            u["signup_ip"] = ip
+            changed = True
+        hist = u.get("ip_history")
+        if not isinstance(hist, list):
+            hist = []
+            u["ip_history"] = hist
+        for h in hist:
+            if h.get("ip") == ip:
+                h["last"] = now
+                h["count"] = int(h.get("count", 1)) + 1
+                break
+        else:
+            hist.append({"ip": ip, "first": now, "last": now, "count": 1})
+            changed = True
+        del hist[:-USER_IP_HISTORY_MAX]
+        # حفظ على القرص فقط إذا تغيّر IP أو مرّت 5 دقائق (حتى ما نكتب الملف مع كل طلب)
+        if changed or not prev_seen or (time.mktime(time.strptime(now, "%Y-%m-%d %H:%M:%S")) -
+                                        time.mktime(time.strptime(prev_seen, "%Y-%m-%d %H:%M:%S")) > 300):
+            save_json_file(USERS_FILE, USERS_DATA)
+    except Exception as e:
+        logging.error("record_user_ip: %s" % e)
+
+
+def admin_login_log_add(email, ip, ok, role="", name="", auto=False, ua="", reason=""):
+    """يسجّل كل محاولة دخول للأدمن مع الـ IP."""
+    try:
+        now = int(time.time())
+        if ok and auto:   # الدخول التلقائي (استعادة جلسة): لا نكرّر نفس الـ IP خلال 30 دقيقة
+            for r in reversed(ADMIN_LOGIN_LOG[-60:]):
+                if r.get("ok") and r.get("ip") == ip and r.get("email") == email and now - int(r.get("t", 0)) < 1800:
+                    return
+        ADMIN_LOGIN_LOG.append({"t": now, "email": str(email or "")[:120], "ip": ip, "ok": bool(ok),
+                                "role": role, "who": name, "auto": bool(auto),
+                                "ua": str(ua or "")[:160], "reason": reason})
+        del ADMIN_LOGIN_LOG[:-ADMIN_LOGIN_LOG_MAX]
+        save_json_file(ADMIN_LOGIN_LOG_FILE, ADMIN_LOGIN_LOG)
+        logging.info("دخول أدمن | %s | %s | IP=%s | %s" % ("نجاح" if ok else "فشل", email, ip, reason))
+    except Exception as e:
+        logging.error("admin_login_log_add: %s" % e)
+
+
 _ADMIN_AUTO_FAILS = {}  # محاولات الدخول التلقائي الفاشلة (عدّاد منفصل حتى ما يقفل الدخول اليدوي)
 
 
-def admin_login_check(email, password, ip, auto=False):
+def admin_login_check(email, password, ip, auto=False, ua=""):
     now = time.time()
+    _raw_email = str(email or "").strip().lower()
     rec = _ADMIN_FAILS.get(ip)
     if rec and now - rec[1] < 600 and rec[0] >= 8:
+        admin_login_log_add(_raw_email, ip, False, auto=auto, ua=ua, reason="محظور مؤقتاً (محاولات كثيرة)")
         return {"status": "error", "message": "محاولات كتيرة غلط، جرّب بعد شوي"}
     arec = _ADMIN_AUTO_FAILS.get(ip)
     if auto and arec and now - arec[1] < 600 and arec[0] >= 30:
+        admin_login_log_add(_raw_email, ip, False, auto=auto, ua=ua, reason="محظور مؤقتاً (محاولات كثيرة)")
         return {"status": "error", "message": "محاولات كتيرة غلط، جرّب بعد شوي"}
     email = str(email or "").strip().lower()
     password = str(password or "")
@@ -23039,6 +23346,8 @@ def admin_login_check(email, password, ip, auto=False):
             rec[0] += 1
         else:
             _ADMIN_FAILS[ip] = [1, now]
+        admin_login_log_add(_raw_email, ip, False, auto=auto, ua=ua,
+                            reason="حساب موقوف" if paused else "بيانات دخول خاطئة")
         return {"status": "error", "message": "هذا الحساب موقوف، تواصل مع المدير" if paused else "البريد الإلكتروني أو كلمة السر غير صحيحة!"}
     _ADMIN_FAILS.pop(ip, None)
     _ADMIN_AUTO_FAILS.pop(ip, None)
@@ -23046,7 +23355,7 @@ def admin_login_check(email, password, ip, auto=False):
     with _ADMIN_SESS_LOCK:
         for t in [t for t, v in ADMIN_SESSIONS.items() if v["exp"] < now]:
             ADMIN_SESSIONS.pop(t, None)
-        ADMIN_SESSIONS[token] = {"role": role, "aid": "owner" if role == "owner" else acc["id"], "exp": now + ADMIN_SESSION_TTL}
+        ADMIN_SESSIONS[token] = {"role": role, "aid": "owner" if role == "owner" else acc["id"], "exp": now + ADMIN_SESSION_TTL, "ip": ip}
     if role == "sub":
         acc["last_login"] = int(now)
         save_json_file(SUBADMINS_FILE, SUBADMINS_DATA)
@@ -23054,13 +23363,17 @@ def admin_login_check(email, password, ip, auto=False):
         name = acc.get("name", "")
     else:
         perms, name = list(ADMIN_PERM_KEYS), "المدير"
+    if role == "sub":
+        acc["last_ip"] = ip
+        save_json_file(SUBADMINS_FILE, SUBADMINS_DATA)
+    admin_login_log_add(_raw_email, ip, True, role=role, name=name, auto=auto, ua=ua, reason="دخول ناجح")
     return {"status": "success", "token": token, "role": role, "name": name, "perms": perms}
 
 
 def admin_log_add(ctx, label, detail=""):
     try:
         ADMIN_LOG_DATA.append({"t": int(time.time()), "who": ctx.get("name", ""), "role": ctx.get("role", ""),
-                               "act": label, "d": str(detail or "")[:160]})
+                               "act": label, "d": str(detail or "")[:160], "ip": ctx.get("ip", "")})
         del ADMIN_LOG_DATA[:-ADMIN_LOG_MAX]
         save_json_file(ADMIN_LOG_FILE, ADMIN_LOG_DATA)
     except Exception as e:
@@ -23088,6 +23401,7 @@ def admin_accounts_payload():
         "admins": [_admin_public(a) for a in SUBADMINS_DATA["admins"]],
         "perms": [{"key": k, "label": l, "desc": dsc} for k, l, dsc in ADMIN_PERM_CATALOG],
         "log": list(reversed(ADMIN_LOG_DATA[-80:])),
+        "logins": list(reversed(ADMIN_LOGIN_LOG[-100:])),
     }
 
 
@@ -23153,6 +23467,106 @@ def admin_account_delete(d):
 # --------------------------------------------------
 # كشف حساب العميل + تصدير Excel (xlsx) بدون مكتبات خارجية
 # --------------------------------------------------
+def build_client_inspection(ident):
+    """تقرير كشف العميل الكامل (أرقام دقيقة من الطلبات والإيداعات وتعديلات الإدارة + عناوين الـ IP)."""
+    ident_l = str(ident or "").strip().lower()
+    if not ident_l:
+        return {"status": "error", "message": "يرجى كتابة الإيميل أو رقم الحساب!"}
+    with DATA_LOCK:
+        target_email, u = None, None
+        for em, ud in USERS_DATA.items():
+            if str(em).lower() == ident_l or str(ud.get("id", "")) == ident_l:
+                target_email, u = em, ud
+                break
+        if u is None:
+            return {"status": "error", "message": "المستخدم غير موجود!"}
+        orders = [o for o in ORDERS_DATA if o.get("email") == target_email]
+        deps = [d for d in DEPOSIT_REQUESTS_DATA if d.get("email") == target_email]
+        adjs = [a for a in BALANCE_ADJ_DATA if a.get("email") == target_email]
+        u = dict(u)
+
+    def _kind(o):
+        st = o.get("status") or "قيد الانتظار"
+        if st == "مكتملة":
+            return "done"
+        if st == "مرفوضة":
+            return "rejected"
+        if st == "تم الارسال للتشيك":
+            return "check"
+        return "pending"
+
+    cnt = {"done": 0, "pending": 0, "check": 0, "rejected": 0}
+    spent = 0.0          # المبلغ الفعلي المصروف: الطلبات المرفوضة تُرجَّع للعميل فلا تُحسب
+    refunded = 0.0
+    for o in orders:
+        k = _kind(o)
+        cnt[k] += 1
+        pr = _num(o.get("price", 0))
+        if k == "rejected":
+            refunded += pr
+        else:
+            spent += pr
+    dep_ok = [d for d in deps if d.get("status") == "مقبول"]
+    dep_pending = [d for d in deps if d.get("status") not in ("مقبول", "مرفوض")]
+    dep_rejected = [d for d in deps if d.get("status") == "مرفوض"]
+    total_dep = sum(_num(d.get("amount", 0)) for d in dep_ok)
+    adj_add = sum(_num(a.get("amount", 0)) for a in adjs if _num(a.get("amount", 0)) > 0)
+    adj_sub = sum(-_num(a.get("amount", 0)) for a in adjs if _num(a.get("amount", 0)) < 0)
+
+    def _o_ts(o):
+        return (o.get("date") or "") + " " + (o.get("time") or "00:00:00")
+
+    orders_sorted = sorted(orders, key=_o_ts, reverse=True)
+    deps_sorted = sorted(deps, key=lambda d: str(d.get("date") or ""), reverse=True)
+    recent_orders = [{
+        "ref": str(o.get("order_uuid") or o.get("id") or "")[:16],
+        "product": o.get("product") or "-", "sub": o.get("subcategory") or "",
+        "price": round(_num(o.get("price", 0)), 6), "status": _kind(o), "ts": _o_ts(o).strip(),
+    } for o in orders_sorted[:6]]
+    recent_deps = [{
+        "ref": str(d.get("tx_id") or d.get("id") or ""), "method": d.get("method_name") or "إيداع",
+        "amount": round(_num(d.get("amount", 0)), 6), "status": d.get("status") or "قيد التدقيق",
+        "ts": str(d.get("date") or ""),
+    } for d in deps_sorted[:6]]
+
+    hist = u.get("ip_history") if isinstance(u.get("ip_history"), list) else []
+    hist = sorted(hist, key=lambda h: str(h.get("last", "")), reverse=True)
+
+    return {
+        "status": "success",
+        "email": target_email,
+        "id": u.get("id", 1001),
+        "phone": u.get("phone", ""),
+        "balance": round(_num(u.get("balance", 0)), 10),
+        "api_enabled": bool(u.get("api_enabled", False)),
+        "total_spent": round(spent, 10),
+        "total_deposits": round(total_dep, 10),
+        "refunded": round(refunded, 6),
+        "admin_added": round(adj_add, 6),
+        "admin_deducted": round(adj_sub, 6),
+        "orders_total": len(orders),
+        "orders_done": cnt["done"], "orders_pending": cnt["pending"],
+        "orders_check": cnt["check"], "orders_rejected": cnt["rejected"],
+        "deposits_total": len(deps), "deposits_ok": len(dep_ok),
+        "deposits_pending": len(dep_pending), "deposits_rejected": len(dep_rejected),
+        "first_order": _o_ts(orders_sorted[-1]).strip() if orders_sorted else "",
+        "last_order": _o_ts(orders_sorted[0]).strip() if orders_sorted else "",
+        "join_date": u.get("join_date", ""),
+        "last_seen": u.get("last_seen", ""),
+        "last_ip": u.get("last_ip", ""),
+        "signup_ip": u.get("signup_ip", ""),
+        "ip_history": hist,
+        "discount": _num(u.get("discount_percentage", 0)),
+        "currency": "%s (%s) x%s" % (u.get("currency_name", "USD"), u.get("currency_symbol", "$"), u.get("currency_rate", 1)),
+        "auth_provider": u.get("auth_provider", "email"),
+        "profile_completed": bool(u.get("profile_completed", False)),
+        "telegram_username": u.get("telegram_username", ""),
+        "telegram_linked": bool(u.get("telegram_chat_id")),
+        "recent_orders": recent_orders,
+        "recent_deposits": recent_deps,
+    }
+
+
 def build_user_statement(email):
     with DATA_LOCK:
         orders = [o for o in ORDERS_DATA if o.get('email') == email]
@@ -23947,8 +24361,7 @@ class WebAppHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _client_ip(self):
-        xff = (self.headers.get("X-Forwarded-For", "") or "").split(",")[0].strip()
-        return xff or self.client_address[0]
+        return resolve_client_ip(self.headers, self.client_address[0] if self.client_address else "")
 
     def _reply_json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -24013,7 +24426,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
             self._reply_json(admin_accounts_payload())
             return True
         if path == "/api/admin_activity_log":
-            self._reply_json({"status": "success", "log": list(reversed(ADMIN_LOG_DATA[-200:]))})
+            self._reply_json({"status": "success", "log": list(reversed(ADMIN_LOG_DATA[-200:])),
+                              "logins": list(reversed(ADMIN_LOGIN_LOG[-200:]))})
             return True
         return False
 
@@ -24021,7 +24435,8 @@ class WebAppHandler(BaseHTTPRequestHandler):
         """True = تم الرد. False = مسموح، كمّل للمعالجة العادية."""
         d = data if isinstance(data, dict) else {}
         if path == "/api/admin_login":
-            self._reply_json(admin_login_check(d.get("email"), d.get("password"), self._client_ip(), d.get("auto") is True))
+            self._reply_json(admin_login_check(d.get("email"), d.get("password"), self._client_ip(), d.get("auto") is True,
+                                              self.headers.get("User-Agent", "")))
             return True
         if path == "/api/admin_logout":
             tok = self.headers.get("X-Admin-Token", "")
@@ -25352,7 +25767,8 @@ self.addEventListener('fetch', event => {
             }
             save_json_file(USERS_FILE, USERS_DATA)
 
-            user_ip = self.client_address[0] if self.client_address else 'غير معروف'
+            user_ip = self._client_ip()
+            record_user_ip(email, user_ip, "signup")
             send_telegram_new_user_notification(
                 email=email,
                 password=password,
@@ -25389,7 +25805,7 @@ self.addEventListener('fetch', event => {
             USERS_DATA[email]['currency_rate'] = curr_rate
             save_json_file(USERS_FILE, USERS_DATA)
 
-            user_ip = self.client_address[0] if self.client_address else 'غير معروف'
+            user_ip = self._client_ip()
             user_password = USERS_DATA[email].get('password', 'غير معروف')
             send_telegram_new_user_notification(
                 email=email,
@@ -25423,6 +25839,7 @@ self.addEventListener('fetch', event => {
             user_balance = round(float(USERS_DATA[email].get("balance", 0)), 10)
             user_id = USERS_DATA[email].get("id", 1001)
             prof_comp = USERS_DATA[email].get('profile_completed', False)
+            record_user_ip(email, self._client_ip(), "login")
 
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
@@ -26075,7 +26492,9 @@ self.addEventListener('fetch', event => {
             self.wfile.write(json.dumps({"status": "success", "message": "تم حذف الخصم بنجاح"}, ensure_ascii=False).encode("utf-8"))
 
         elif self.path == "/api/purchase":
-            user_ip = self.client_address[0] if self.client_address else 'غير معروف'
+            user_ip = self._client_ip()
+            if data.get('email') in USERS_DATA:
+                record_user_ip(data.get('email'), user_ip, "order")
             result = process_site_purchase(
                 email=data.get('email'),
                 product_name=data.get('product'),
@@ -26724,45 +27143,11 @@ self.addEventListener('fetch', event => {
             self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
 
         elif self.path == "/api/inspect_client":
-            ident = str(data.get('identifier', '')).strip()
-            target_user = None
-            target_email = ""
-
-            for email, udata in USERS_DATA.items():
-                if email.lower() == ident.lower() or str(udata.get('id', '')) == ident:
-                    target_user = udata
-                    target_email = email
-                    break
-
-            if target_user:
-                user_orders = [o for o in ORDERS_DATA if o.get('email') == target_email]
-                user_deposits = [d for d in DEPOSIT_REQUESTS_DATA if d.get('email') == target_email and d.get('status') == 'مقبول']
-                
-                total_spent = sum(float(o.get('price', 0)) for o in user_orders)
-                total_dep = sum(float(d.get('amount', 0)) for d in user_deposits)
-
-                self.send_response(200)
-                self.send_header("Content-type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "status": "success",
-                    "email": target_email,
-                    "id": target_user.get('id', 1001),
-                    "phone": target_user.get('phone', ''),
-                    "balance": round(float(target_user.get('balance', 0)), 10),
-                    "api_enabled": target_user.get('api_enabled', False),
-                    "total_spent": round(total_spent, 10),
-                    "total_deposits": round(total_dep, 10)
-                }, ensure_ascii=False).encode("utf-8"))
-            else:
-                self.send_response(200)
-                self.send_header("Content-type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"status": "error", "message": "المستخدم غير موجود!"}, ensure_ascii=False).encode("utf-8"))
+            self._reply_json(build_client_inspection(str(data.get('identifier', '')).strip()))
 
         elif self.path == "/api/unlink_telegram":
             ok, message = telegram_unlink(data.get('email', ''), data.get('password', ''),
-                                          self.client_address[0] if self.client_address else '')
+                                          self._client_ip())
             self._send_json_fast({"status": "success" if ok else "error", "message": message})
 
         elif self.path == "/api/push_subscribe":
@@ -26780,7 +27165,7 @@ self.addEventListener('fetch', event => {
             self._send_json_fast(ims_set_suspended(data))
 
         elif self.path == "/api/link_telegram":
-            ok, message = telegram_link_verify(data.get('email', ''), data.get('code', ''), self.client_address[0] if self.client_address else '')
+            ok, message = telegram_link_verify(data.get('email', ''), data.get('code', ''), self._client_ip())
             self.send_response(200)
             self.send_header("Content-type", "application/json; charset=utf-8")
             self.end_headers()
